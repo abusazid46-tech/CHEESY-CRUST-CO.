@@ -124,7 +124,7 @@
       color: var(--gold) !important;
     }
 
-    /* ========== SHOPPING CART ICON IN HEADER ========== */
+    /* Shopping Cart Icon Styles */
     .cart-icon {
       position: relative;
       display: inline-block;
@@ -309,7 +309,6 @@
       height: 100%;
       position: relative;
       overflow: hidden;
-      cursor: pointer;
     }
     .menu-card::before {
       content: '';
@@ -339,17 +338,8 @@
       filter: brightness(0.92);
       opacity: 1;
     }
-    /* Enhanced Zoom Effect on Click - More Dramatic */
-    .menu-img.zoomed {
-      transform: scale(1.3);
-      filter: brightness(1.05);
-      transition: transform 0.35s cubic-bezier(0.2, 0.9, 0.4, 1.1), filter 0.3s ease;
-      z-index: 10;
-      position: relative;
-      box-shadow: 0 0 30px rgba(205, 164, 94, 0.6);
-    }
     .menu-card:hover .menu-img {
-      filter: brightness(1.08);
+      filter: brightness(1.08); /* Image lights up on hover */
       transform: scale(1.02);
     }
     .menu-title {
@@ -371,7 +361,6 @@
       border-radius: 40px;
       font-weight: 600;
       transition: all 0.3s ease;
-      cursor: pointer;
     }
     .btn-add:hover {
       background: var(--gold);
@@ -500,39 +489,6 @@
         opacity: 1;
       }
     }
-    /* Image Zoom Overlay for better visibility */
-    .img-zoom-overlay {
-      position: fixed;
-      top: 0;
-      left: 0;
-      width: 100%;
-      height: 100%;
-      background: rgba(0,0,0,0.85);
-      z-index: 9999;
-      display: flex;
-      justify-content: center;
-      align-items: center;
-      cursor: pointer;
-      opacity: 0;
-      visibility: hidden;
-      transition: all 0.3s ease;
-    }
-    .img-zoom-overlay.active {
-      opacity: 1;
-      visibility: visible;
-    }
-    .img-zoom-overlay img {
-      max-width: 80%;
-      max-height: 80%;
-      border-radius: 16px;
-      border: 3px solid var(--gold);
-      box-shadow: 0 0 50px rgba(205,164,94,0.5);
-      transform: scale(0.9);
-      transition: transform 0.3s cubic-bezier(0.2, 0.9, 0.4, 1.1);
-    }
-    .img-zoom-overlay.active img {
-      transform: scale(1);
-    }
     @media (max-width: 768px) {
       .hero-content h1 { font-size: 2.8rem; }
       .section-title { font-size: 2rem; }
@@ -553,7 +509,7 @@
   </div>
 </div>
 
-<!-- Sticky Navbar with Shopping Cart Icon in Header -->
+<!-- Sticky Navbar with Shopping Cart Icon -->
 <nav class="navbar navbar-expand-lg fixed-top" id="mainNav">
   <div class="container">
     <a class="navbar-brand" href="#">Cheesy Crust Co.</a>
@@ -568,7 +524,7 @@
         <li class="nav-item"><a class="nav-link" href="#reservation">Reserve</a></li>
         <li class="nav-item"><a class="nav-link" href="#footer">Contact</a></li>
       </ul>
-      <!-- Shopping Cart Icon with Badge - IN HEADER -->
+      <!-- Shopping Cart Icon with Badge -->
       <div class="cart-icon ms-lg-3">
         <a href="#" class="position-relative" id="cartLink" style="text-decoration: none;">
           <i class="fas fa-shopping-bag"></i>
@@ -708,11 +664,6 @@
 <!-- Back to Top Button -->
 <button id="backToTop"><i class="fas fa-chevron-up"></i></button>
 
-<!-- Image Zoom Overlay for card images -->
-<div id="imageZoomOverlay" class="img-zoom-overlay">
-  <img id="zoomedImage" src="" alt="Zoomed view">
-</div>
-
 <script src="https://cdn.jsdelivr.net/npm/bootstrap@5.3.0-alpha1/dist/js/bootstrap.bundle.min.js"></script>
 <script src="https://unpkg.com/aos@2.3.1/dist/aos.js"></script>
 <script>
@@ -730,7 +681,7 @@
     }, 800);
   });
 
-  // ========== CART FUNCTIONALITY IN HEADER ==========
+  // ========== CART FUNCTIONALITY ==========
   let cartItems = 0;
   const cartCountElement = document.getElementById('cart-count');
   
@@ -747,32 +698,6 @@
     setTimeout(() => {
       toast.remove();
     }, 2000);
-  }
-
-  // ========== IMAGE ZOOM ON CLICK - ENHANCED ==========
-  function initImageZoom() {
-    const overlay = document.getElementById('imageZoomOverlay');
-    const zoomedImg = document.getElementById('zoomedImage');
-    
-    // Close overlay when clicking on it
-    overlay.addEventListener('click', function() {
-      overlay.classList.remove('active');
-      setTimeout(() => {
-        zoomedImg.src = '';
-      }, 300);
-    });
-    
-    // Attach zoom to all menu images (delegation since cards are dynamically rendered)
-    document.getElementById('menu-items-container').addEventListener('click', function(e) {
-      // Check if clicked element is an image or inside a menu-card image area
-      let targetImg = e.target.closest('.menu-img');
-      if (targetImg && targetImg.classList.contains('menu-img')) {
-        e.stopPropagation();
-        const imgSrc = targetImg.src;
-        zoomedImg.src = imgSrc;
-        overlay.classList.add('active');
-      }
-    });
   }
 
   // Menu Data with Real Images
@@ -815,7 +740,6 @@
     // Attach event listeners to Add to Order buttons with cart increment
     document.querySelectorAll('.add-to-order-btn').forEach(btn => {
       btn.addEventListener('click', (e) => {
-        e.stopPropagation(); // Prevent triggering card zoom
         const name = btn.getAttribute('data-name');
         const price = btn.getAttribute('data-price');
         updateCart(name, price);
@@ -918,7 +842,6 @@
     initBackToTop();
     handleNavbarScroll();
     smoothScroll();
-    initImageZoom(); // Initialize image zoom on click
     const dateInput = document.getElementById('resDate');
     if(dateInput) dateInput.min = new Date().toISOString().split('T')[0];
   });
