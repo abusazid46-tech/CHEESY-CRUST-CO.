@@ -1,333 +1,391 @@
-// Initialize AOS
-AOS.init({ duration: 1000, once: true, offset: 100 });
+let currentPage = 'dashboard';
+let revenueChart = null;
 
-// Preloader
-window.addEventListener('load', function() {
-    const preloader = document.getElementById('preloader');
-    setTimeout(() => {
-        preloader.style.opacity = '0';
-        setTimeout(() => {
-            preloader.style.display = 'none';
-        }, 500);
-    }, 800);
-});
-
-// Cart count
-let currentCart = { items: [], total: 0 };
-
-async function loadCartCount() {
-    try {
-        const cart = await api.getCart();
-        currentCart = cart;
-        const itemCount = cart.items?.reduce((sum, item) => sum + item.quantity, 0) || 0;
-        const cartBadge = document.getElementById('cart-count');
-        if (cartBadge) cartBadge.innerText = itemCount;
-    } catch (error) {
-        console.error('Failed to load cart:', error);
+// Check admin access
+async function checkAdminAccess() {
+    if (!authToken || !isAdmin) {
+        window.location.href = 'index.html';
+        return false;
     }
+    return true;
 }
 
-// Add to cart function
-async function addToCart(menuItemId, itemName, price) {
-    if (!authToken) {
-        showLoginPrompt();
-        return;
-    }
-    
+// Load dashboard
+async function loadDashboard() {
     try {
-        await api.addToCart(menuItemId);
-        await loadCartCount();
-        showToast(`Added: ${itemName} - ${price}`);
-    } catch (error) {
-        showToast('Failed to add to cart', 'error');
-    }
-}
-
-// Render menu from API
-async function renderMenuFromAPI(category = 'all') {
-    const container = document.getElementById("menu-items-container");
-    if (!container) return;
-    
-    try {
-        const menuItems = await api.getMenu(category);
+        const stats = await api.getAdminDashboard();
         
-        if (!menuItems || menuItems.length === 0) {
-            container.innerHTML = '<div class="col-12 text-center"><p>No menu items available</p></div>';
-            return;
-        }
+        document.getElementById('todayOrders').innerText = stats.today_orders || 0;
+        document.getElementById('todayRevenue').innerHTML = `₹${(stats.today_revenue || 0).toFixed(2)}`;
+        document.getElementById('totalOrders').innerText = stats.total_orders || 0;
+        document.getElementById('todayReservations').innerText = stats.today_reservations || 0;
+        document.getElementById('pendingCount').innerText = stats.pending_orders || 0;
+        document.getElementById('reservationCount').innerText = stats.today_reservations || 0;
         
-        let html = "";
-        menuItems.forEach((item, index) => {
-            html += `
-                <div class="col-sm-6 col-md-4 col-lg-4 menu-col" data-aos="fade-up" data-aos-delay="${index * 100}">
-                    <div class="menu-card">
-                        <img src="${item.image_url}" class="menu-img" alt="${item.name}" loading="lazy" onerror="this.src='https://via.placeholder.com/400x200?text=Food+Image'">
-                        <div class="d-flex justify-content-between align-items-center">
-                            <h5 class="menu-title">${item.name}</h5>
-                            <span class="menu-price">${item.original_price}</span>
-                        </div>
-                        <p class="small text-secondary mt-2">${item.description}</p>
-                        <div class="d-flex justify-content-between align-items-center mt-3">
-                            <span><i class="fas fa-star gold-icon"></i> ${item.category === 'breakfast' ? 'Morning Delight' : item.category === 'lunch' ? 'Chef’s Lunch' : 'Evening Special'}</span>
-                            <button class="btn-add add-to-order-btn" data-id="${item._id}" data-name="${item.name}" data-price="${item.original_price}">Add to Order</button>
-                        </div>
-                    </div>
-                </div>
-            `;
-        });
-        container.innerHTML = html;
+        // Load recent orders
+        const orders = await api.getAllOrders(5, 0);
+        const recentOrdersHtml = orders.orders.map(order => `
+            <tr>
+                <td>#${order._id.slice(-6)}</td>
+                <td>₹${order.total}</td>
+                <td><span class="status-badge status-${order.order_status}">${order.order_status}</span></td>
+                <td><button class="btn btn-sm btn-outline-gold view-order" data-id="${order._id}">View</button></td>
+            </tr>
+        `).join('');
+        document.getElementById('recentOrders').innerHTML = recentOrdersHtml || '<tr><td colspan="4" class="text-center">No orders found</td></tr>';
         
-        // Attach event listeners
-        document.querySelectorAll('.add-to-order-btn').forEach(btn => {
-            btn.addEventListener('click', (e) => {
-                const id = btn.getAttribute('data-id');
-                const name = btn.getAttribute('data-name');
-                const price = btn.getAttribute('data-price');
-                addToCart(id, name, price);
-            });
+        // Add view order handlers
+        document.querySelectorAll('.view-order').forEach(btn => {
+            btn.onclick = () => viewOrderDetails(btn.getAttribute('data-id'));
         });
     } catch (error) {
-        console.error('Failed to load menu:', error);
-        container.innerHTML = '<div class="col-12 text-center"><p>Failed to load menu. Please try again later.</p></div>';
+        console.error('Failed to load dashboard:', error);
     }
 }
 
-// Filter functionality
-function initMenuFilters() {
-    const filterBtns = document.querySelectorAll('.filter-btn');
-    filterBtns.forEach(btn => {
-        btn.addEventListener('click', function() {
-            filterBtns.forEach(b => b.classList.remove('active'));
-            this.classList.add('active');
-            renderMenuFromAPI(this.getAttribute('data-filter'));
+// Load orders
+async function loadOrders(status = 'all') {
+    try {
+        const orders = await api.getAllOrders(100, 0, status);
+        const ordersHtml = orders.orders.map(order => `
+            <tr>
+                <td>#${order._id.slice(-6)}</td>
+                <td>${order.user_id?.slice(-6) || 'Guest'}</td>
+                <td>${order.items?.length || 0} items</td>
+                <td>₹${order.total}</td>
+                <td><span class="badge bg-info">${order.order_type}</span></td>
+                <td>
+                    <select class="form-select form-select-sm status-update" data-id="${order._id}" style="width: auto; display: inline-block;">
+                        <option value="pending" ${order.order_status === 'pending' ? 'selected' : ''}>Pending</option>
+                        <option value="confirmed" ${order.order_status === 'confirmed' ? 'selected' : ''}>Confirmed</option>
+                        <option value="preparing" ${order.order_status === 'preparing' ? 'selected' : ''}>Preparing</option>
+                        <option value="ready" ${order.order_status === 'ready' ? 'selected' : ''}>Ready</option>
+                        <option value="out_for_delivery" ${order.order_status === 'out_for_delivery' ? 'selected' : ''}>Out for Delivery</option>
+                        <option value="delivered" ${order.order_status === 'delivered' ? 'selected' : ''}>Delivered</option>
+                        <option value="cancelled" ${order.order_status === 'cancelled' ? 'selected' : ''}>Cancelled</option>
+                    </select>
+                </td>
+                <td><button class="btn btn-sm btn-outline-gold view-order" data-id="${order._id}">Details</button></td>
+            </tr>
+        `).join('');
+        document.getElementById('allOrdersList').innerHTML = ordersHtml || '<tr><td colspan="7" class="text-center">No orders found</td></tr>';
+        
+        // Add status update handlers
+        document.querySelectorAll('.status-update').forEach(select => {
+            select.onchange = async () => {
+                const orderId = select.getAttribute('data-id');
+                const newStatus = select.value;
+                await api.updateOrderStatus(orderId, newStatus);
+                showToast(`Order status updated to ${newStatus}`, 'success');
+                loadOrders(status);
+            };
         });
-    });
-    renderMenuFromAPI('all');
+        
+        document.querySelectorAll('.view-order').forEach(btn => {
+            btn.onclick = () => viewOrderDetails(btn.getAttribute('data-id'));
+        });
+    } catch (error) {
+        console.error('Failed to load orders:', error);
+    }
 }
 
-// Reservation form with pre-order
-let preOrderItems = [];
-
-function renderPreOrderItems(container) {
-    if (!container) return;
-    
-    if (preOrderItems.length === 0) {
-        container.innerHTML = '<p class="text-muted small">No items pre-ordered yet</p>';
-        return;
-    }
-    
-    let html = '<div class="list-group mt-2">';
-    preOrderItems.forEach((item, index) => {
-        html += `
-            <div class="list-group-item" style="background: #2a2621; color: white; margin-bottom: 0.5rem; padding: 0.5rem; border: 1px solid #cda45e;">
-                <div class="d-flex justify-content-between align-items-center">
-                    <span>${item.name} x ${item.quantity}</span>
-                    <button type="button" class="btn-remove-preorder btn btn-sm btn-danger" data-index="${index}">Remove</button>
+// View order details modal
+async function viewOrderDetails(orderId) {
+    try {
+        const order = await api.getOrderDetails(orderId);
+        const modal = document.createElement('div');
+        modal.className = 'login-modal';
+        modal.innerHTML = `
+            <div class="login-modal-content" style="max-width: 600px;">
+                <button class="close-modal" style="position: absolute; top: 10px; right: 10px; background: none; border: none; color: white; font-size: 1.5rem;">&times;</button>
+                <h4 style="color: var(--gold);">Order Details #${order._id.slice(-6)}</h4>
+                <hr style="border-color: rgba(205,164,94,0.3);">
+                <p><strong>Order Type:</strong> ${order.order_type}</p>
+                <p><strong>Status:</strong> <span class="status-badge status-${order.order_status}">${order.order_status}</span></p>
+                <p><strong>Payment Status:</strong> ${order.payment_status}</p>
+                ${order.address ? `<p><strong>Delivery Address:</strong> ${order.address}</p>` : ''}
+                <h5 style="color: var(--gold); margin-top: 1rem;">Items:</h5>
+                <div class="table-responsive">
+                    <table class="table table-custom">
+                        <thead><tr><th>Item</th><th>Quantity</th><th>Price</th><th>Total</th></tr></thead>
+                        <tbody>
+                            ${order.items.map(item => `
+                                <tr>
+                                    <td>${item.name}</td>
+                                    <td>${item.quantity}</td>
+                                    <td>₹${item.price}</td>
+                                    <td>₹${item.price * item.quantity}</td>
+                                </tr>
+                            `).join('')}
+                        </tbody>
+                        <tfoot>
+                            <tr><td colspan="3"><strong>Total</strong></td><td><strong>₹${order.total}</strong></td></tr>
+                        </tfoot>
+                    </table>
                 </div>
             </div>
         `;
-    });
-    html += '</div>';
-    container.innerHTML = html;
-    
-    document.querySelectorAll('.btn-remove-preorder').forEach(btn => {
-        btn.onclick = () => {
-            const idx = parseInt(btn.getAttribute('data-index'));
-            preOrderItems.splice(idx, 1);
-            renderPreOrderItems(container);
-        };
-    });
+        document.body.appendChild(modal);
+        modal.querySelector('.close-modal').onclick = () => modal.remove();
+    } catch (error) {
+        showToast('Failed to load order details', 'error');
+    }
 }
 
-async function addPreOrderItem() {
-    const menu = await api.getMenu();
+// Load menu items
+async function loadMenuItems() {
+    try {
+        const menuItems = await api.getMenu();
+        const menuHtml = menuItems.map(item => `
+            <tr>
+                <td><img src="${item.image_url}" style="width: 50px; height: 50px; object-fit: cover; border-radius: 8px;" onerror="this.src='https://via.placeholder.com/50'"></td>
+                <td>${item.name}</td>
+                <td>${item.category}</td>
+                <td>${item.original_price}</td>
+                <td><span class="badge ${item.is_available ? 'bg-success' : 'bg-danger'}">${item.is_available ? 'Available' : 'Unavailable'}</span></td>
+                <td>
+                    <button class="btn btn-sm btn-outline-gold edit-menu" data-id="${item._id}">Edit</button>
+                    <button class="btn btn-sm btn-danger delete-menu" data-id="${item._id}">Delete</button>
+                </td>
+            </tr>
+        `).join('');
+        document.getElementById('menuItemsList').innerHTML = menuHtml || '<tr><td colspan="6" class="text-center">No menu items found</td></tr>';
+        
+        document.querySelectorAll('.edit-menu').forEach(btn => {
+            btn.onclick = () => editMenuItem(btn.getAttribute('data-id'));
+        });
+        
+        document.querySelectorAll('.delete-menu').forEach(btn => {
+            btn.onclick = async () => {
+                if (confirm('Are you sure you want to delete this item?')) {
+                    await api.deleteMenuItem(btn.getAttribute('data-id'));
+                    showToast('Menu item deleted', 'success');
+                    loadMenuItems();
+                }
+            };
+        });
+    } catch (error) {
+        console.error('Failed to load menu:', error);
+    }
+}
+
+// Edit menu item
+async function editMenuItem(itemId) {
+    const menuItems = await api.getMenu();
+    const item = menuItems.find(i => i._id === itemId);
+    if (!item) return;
+    
     const modal = document.createElement('div');
     modal.className = 'login-modal';
     modal.innerHTML = `
         <div class="login-modal-content">
-            <button class="close-preorder-modal" style="position: absolute; top: 10px; right: 10px; background: none; border: none; color: white; font-size: 1.5rem;">&times;</button>
-            <h4 style="color: #cda45e;">Select Menu Item</h4>
-            <select id="item-select" class="form-control my-3">
-                ${menu.map(item => `<option value="${item._id}">${item.name} - ${item.original_price}</option>`).join('')}
-            </select>
-            <input type="number" id="item-quantity" class="form-control my-3" placeholder="Quantity" value="1" min="1">
-            <div class="d-flex gap-2">
-                <button id="confirm-preorder" class="btn btn-gold">Add</button>
-                <button id="cancel-preorder" class="btn btn-outline-gold">Cancel</button>
-            </div>
+            <button class="close-modal" style="position: absolute; top: 10px; right: 10px; background: none; border: none; color: white; font-size: 1.5rem;">&times;</button>
+            <h4 style="color: var(--gold);">Edit Menu Item</h4>
+            <form id="editMenuForm">
+                <div class="mb-3">
+                    <label>Item Name</label>
+                    <input type="text" class="form-control" id="editName" value="${item.name}" required>
+                </div>
+                <div class="mb-3">
+                    <label>Category</label>
+                    <select class="form-select" id="editCategory" required>
+                        <option value="breakfast" ${item.category === 'breakfast' ? 'selected' : ''}>Breakfast</option>
+                        <option value="lunch" ${item.category === 'lunch' ? 'selected' : ''}>Lunch</option>
+                        <option value="dinner" ${item.category === 'dinner' ? 'selected' : ''}>Dinner</option>
+                    </select>
+                </div>
+                <div class="mb-3">
+                    <label>Price (₹)</label>
+                    <input type="number" class="form-control" id="editPrice" value="${item.price}" step="0.01" required>
+                </div>
+                <div class="mb-3">
+                    <label>Description</label>
+                    <textarea class="form-control" id="editDescription" rows="2" required>${item.description}</textarea>
+                </div>
+                <div class="mb-3">
+                    <label>Image URL</label>
+                    <input type="url" class="form-control" id="editImage" value="${item.image_url}" required>
+                </div>
+                <button type="submit" class="btn btn-gold w-100">Update Item</button>
+            </form>
         </div>
     `;
     document.body.appendChild(modal);
     
-    document.getElementById('confirm-preorder').onclick = () => {
-        const select = document.getElementById('item-select');
-        const itemId = select.value;
-        const itemName = select.options[select.selectedIndex].text.split(' - ')[0];
-        const quantity = parseInt(document.getElementById('item-quantity').value);
-        
-        preOrderItems.push({
-            menu_item_id: itemId,
-            name: itemName,
-            quantity: quantity
-        });
-        const container = document.getElementById('preorder-items-container');
-        renderPreOrderItems(container);
-        modal.remove();
-    };
-    
-    document.getElementById('cancel-preorder').onclick = () => modal.remove();
-    modal.querySelector('.close-preorder-modal').onclick = () => modal.remove();
-}
-
-function initReservationForm() {
-    const form = document.getElementById('bookingForm');
-    if (!form) return;
-    
-    // Add pre-order section
-    const preOrderDiv = document.createElement('div');
-    preOrderDiv.className = 'mt-3';
-    preOrderDiv.innerHTML = `
-        <label class="form-label">Pre-order Menu Items (Optional)</label>
-        <div id="preorder-items-container"></div>
-        <button type="button" id="add-preorder-item" class="btn btn-sm btn-outline-gold mt-2">+ Add Item</button>
-    `;
-    form.querySelector('.row.g-3').appendChild(preOrderDiv);
-    
-    const container = document.getElementById('preorder-items-container');
-    renderPreOrderItems(container);
-    
-    document.getElementById('add-preorder-item').onclick = addPreOrderItem;
-    
-    form.onsubmit = async (e) => {
+    document.getElementById('editMenuForm').onsubmit = async (e) => {
         e.preventDefault();
-        
-        const name = document.getElementById('resName')?.value.trim();
-        const phone = document.getElementById('resPhone')?.value.trim();
-        const date = document.getElementById('resDate')?.value;
-        const time = document.getElementById('resTime')?.value;
-        const guestsSelect = document.getElementById('resGuests')?.value;
-        const guests = parseInt(guestsSelect) || 1;
-        
-        if (!name || !phone || !date || !time) {
-            document.getElementById('formMessage').innerHTML = "⚠️ Please fill in all required fields.";
-            return;
-        }
-        
-        if (!authToken) {
-            showLoginPrompt();
-            return;
-        }
-        
-        try {
-            await api.createReservation({
-                name,
-                phone,
-                date,
-                time,
-                guests,
-                pre_order_items: preOrderItems
-            });
-            
-            document.getElementById('formMessage').innerHTML = `✅ Thanks ${name}, your table for ${guests} on ${date} at ${time} is booked! We'll send you a confirmation.`;
-            form.reset();
-            preOrderItems = [];
-            renderPreOrderItems(container);
-            
-            setTimeout(() => {
-                document.getElementById('formMessage').innerHTML = "";
-            }, 4000);
-        } catch (error) {
-            document.getElementById('formMessage').innerHTML = "❌ Failed to book reservation. Please try again.";
-        }
+        await api.updateMenuItem(itemId, {
+            name: document.getElementById('editName').value,
+            category: document.getElementById('editCategory').value,
+            price: parseFloat(document.getElementById('editPrice').value),
+            description: document.getElementById('editDescription').value,
+            image_url: document.getElementById('editImage').value
+        });
+        showToast('Menu item updated', 'success');
+        modal.remove();
+        loadMenuItems();
     };
-}
-
-// Navbar scroll effect
-function handleNavbarScroll() {
-    const navbar = document.getElementById('mainNav');
-    window.addEventListener('scroll', () => {
-        if (window.scrollY > 50) {
-            navbar.classList.add('scrolled');
-        } else {
-            navbar.classList.remove('scrolled');
-        }
-    });
-}
-
-// Back to top button
-function initBackToTop() {
-    const btn = document.getElementById('backToTop');
-    if (!btn) return;
     
-    window.addEventListener('scroll', () => {
-        if (window.scrollY > 300) {
-            btn.style.display = 'block';
-        } else {
-            btn.style.display = 'none';
-        }
-    });
-    btn.addEventListener('click', () => {
-        window.scrollTo({ top: 0, behavior: 'smooth' });
-    });
+    modal.querySelector('.close-modal').onclick = () => modal.remove();
 }
 
-// Smooth scroll
-function smoothScroll() {
-    document.querySelectorAll('a[href^="#"]').forEach(anchor => {
-        anchor.addEventListener('click', function(e) {
-            const href = this.getAttribute('href');
-            if (href === "#" || href === "") return;
-            const target = document.querySelector(href);
-            if (target) {
-                e.preventDefault();
-                target.scrollIntoView({ behavior: 'smooth', block: 'start' });
+// Load reservations
+async function loadReservations() {
+    try {
+        const reservations = await api.getAllReservations();
+        const reservationsHtml = reservations.map(res => `
+            <tr>
+                <td>${res.name}</td>
+                <td>${res.phone}</td>
+                <td>${res.date}</td>
+                <td>${res.time}</td>
+                <td>${res.guests}</td>
+                <td>${res.pre_order_items?.length || 0} items</td>
+                <td><span class="badge bg-success">${res.status}</span></td>
+            </tr>
+        `).join('');
+        document.getElementById('reservationsList').innerHTML = reservationsHtml || '<tr><td colspan="7" class="text-center">No reservations found</td></tr>';
+    } catch (error) {
+        console.error('Failed to load reservations:', error);
+    }
+}
+
+// Load revenue chart
+async function loadRevenueChart() {
+    try {
+        const revenueData = await api.getDailyRevenue(7);
+        
+        const labels = revenueData.map(d => d._id);
+        const values = revenueData.map(d => d.revenue);
+        
+        const ctx = document.getElementById('revenueChart').getContext('2d');
+        if (revenueChart) revenueChart.destroy();
+        
+        revenueChart = new Chart(ctx, {
+            type: 'line',
+            data: {
+                labels: labels,
+                datasets: [{
+                    label: 'Daily Revenue (₹)',
+                    data: values,
+                    borderColor: '#cda45e',
+                    backgroundColor: 'rgba(205, 164, 94, 0.1)',
+                    tension: 0.4,
+                    fill: true
+                }]
+            },
+            options: {
+                responsive: true,
+                plugins: {
+                    legend: {
+                        labels: { color: '#fff' }
+                    }
+                },
+                scales: {
+                    y: {
+                        ticks: { color: '#fff' },
+                        grid: { color: 'rgba(255,255,255,0.1)' }
+                    },
+                    x: {
+                        ticks: { color: '#fff' },
+                        grid: { color: 'rgba(255,255,255,0.1)' }
+                    }
+                }
             }
         });
-    });
+        
+        // Revenue stats
+        const totalRevenue = revenueData.reduce((sum, d) => sum + d.revenue, 0);
+        const avgRevenue = totalRevenue / revenueData.length;
+        document.getElementById('revenueStats').innerHTML = `
+            <p><strong>Total (7 days):</strong> ₹${totalRevenue.toFixed(2)}</p>
+            <p><strong>Average Daily:</strong> ₹${avgRevenue.toFixed(2)}</p>
+            <p><strong>Total Orders:</strong> ${revenueData.reduce((sum, d) => sum + d.count, 0)}</p>
+        `;
+    } catch (error) {
+        console.error('Failed to load revenue chart:', error);
+    }
 }
 
-// Load user info in navbar
-function loadUserInfo() {
-    const navbar = document.querySelector('.navbar-nav');
-    if (!navbar) return;
+// Page navigation
+function navigateTo(page) {
+    currentPage = page;
     
-    // Remove existing user elements
-    const existingUser = document.getElementById('user-nav-item');
-    if (existingUser) existingUser.remove();
+    document.querySelectorAll('.admin-sidebar .nav-link').forEach(link => {
+        link.classList.remove('active');
+    });
+    document.querySelector(`.admin-sidebar .nav-link[data-page="${page}"]`).classList.add('active');
     
-    if (authToken) {
-        const userLi = document.createElement('li');
-        userLi.id = 'user-nav-item';
-        userLi.className = 'nav-item dropdown';
-        userLi.innerHTML = `
-            <a class="nav-link dropdown-toggle" href="#" role="button" data-bs-toggle="dropdown">
-                <i class="fas fa-user"></i> Account
-            </a>
-            <ul class="dropdown-menu dropdown-menu-dark">
-                <li><a class="dropdown-item" href="#" id="myOrdersLink">My Orders</a></li>
-                <li><a class="dropdown-item" href="#" id="myReservationsLink">My Reservations</a></li>
-                <li><hr class="dropdown-divider"></li>
-                <li><a class="dropdown-item" href="#" id="logoutNavBtn">Logout</a></li>
-            </ul>
-        `;
-        navbar.appendChild(userLi);
-        
-        document.getElementById('logoutNavBtn').onclick = (e) => {
+    const pages = ['dashboard', 'orders', 'menu', 'reservations', 'revenue'];
+    pages.forEach(p => {
+        document.getElementById(`${p}Page`).style.display = p === page ? 'block' : 'none';
+    });
+    
+    document.getElementById('pageTitle').innerText = 
+        page === 'dashboard' ? 'Dashboard' :
+        page === 'orders' ? 'Order Management' :
+        page === 'menu' ? 'Menu Management' :
+        page === 'reservations' ? 'Reservations' : 'Revenue Analytics';
+    
+    // Load page data
+    if (page === 'dashboard') loadDashboard();
+    else if (page === 'orders') loadOrders();
+    else if (page === 'menu') loadMenuItems();
+    else if (page === 'reservations') loadReservations();
+    else if (page === 'revenue') loadRevenueChart();
+}
+
+// Add menu item
+document.getElementById('saveMenuItem')?.addEventListener('click', async () => {
+    const itemData = {
+        name: document.getElementById('itemName').value,
+        category: document.getElementById('itemCategory').value,
+        price: parseFloat(document.getElementById('itemPrice').value),
+        description: document.getElementById('itemDescription').value,
+        image_url: document.getElementById('itemImage').value
+    };
+    
+    if (!itemData.name || !itemData.category || !itemData.price || !itemData.description || !itemData.image_url) {
+        showToast('Please fill all fields', 'error');
+        return;
+    }
+    
+    try {
+        await api.createMenuItem(itemData);
+        showToast('Menu item added successfully', 'success');
+        bootstrap.Modal.getInstance(document.getElementById('addMenuItemModal')).hide();
+        document.getElementById('addMenuItemForm').reset();
+        loadMenuItems();
+    } catch (error) {
+        showToast('Failed to add menu item', 'error');
+    }
+});
+
+// Order status filter
+document.getElementById('orderStatusFilter')?.addEventListener('change', (e) => {
+    loadOrders(e.target.value);
+});
+
+// Initialize
+document.addEventListener('DOMContentLoaded', async () => {
+    const hasAccess = await checkAdminAccess();
+    if (!hasAccess) return;
+    
+    // Setup navigation
+    document.querySelectorAll('.admin-sidebar .nav-link').forEach(link => {
+        link.addEventListener('click', (e) => {
             e.preventDefault();
-            api.logout();
-            location.reload();
-        };
-        
-        if (isAdmin) {
-            const adminLi = document.createElement('li');
-            adminLi.className = 'nav-item';
-            adminLi.innerHTML = '<a class="nav-link" href="admin.html" target="_blank"><i class="fas fa-chart-line"></i> Admin</a>';
-            navbar.appendChild(adminLi);
-        }
-    } else {
-        const loginLi = document.createElement('li');
-        loginLi.id = 'user-nav-item';
-        loginLi.className = 'nav-item';
-        loginLi.innerHTML = '<a class="nav-link" href="#" id="loginNavBtn"><i class="fas fa-sign-in-alt"></i> Login</a>';
-        navbar.appendChild(loginLi);
-        document.getElementById('loginNav
+            navigateTo(link.getAttribute('data-page'));
+        });
+    });
+    
+    // Logout
+    document.getElementById('logoutAdmin')?.addEventListener('click', (e) => {
+        e.preventDefault();
+        api.logout();
+        window.location.href = 'index.html';
+    });
+    
+    // Load initial page
+    navigateTo('dashboard');
+});
