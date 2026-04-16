@@ -1,0 +1,114 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>Your Cart - Cheesy Crust Co.</title>
+  
+  <link href="https://cdn.jsdelivr.net/npm/bootstrap@5.3.0-alpha1/dist/css/bootstrap.min.css" rel="stylesheet">
+  <link href="https://fonts.googleapis.com/css2?family=Playfair+Display:wght@400;500;600;700;800;900&family=Open+Sans:wght@300;400;500;600;700&display=swap" rel="stylesheet">
+  <link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.0.0-beta3/css/all.min.css">
+  <script src="https://checkout.razorpay.com/v1/checkout.js"></script>
+  <link rel="stylesheet" href="css/style.css">
+</head>
+<body>
+
+<nav class="navbar navbar-expand-lg fixed-top" id="mainNav">
+  <div class="container">
+    <a class="navbar-brand" href="index.html">Cheesy Crust Co.</a>
+    <button class="navbar-toggler" type="button" data-bs-toggle="collapse" data-bs-target="#navbarNav">
+      <span class="navbar-toggler-icon" style="filter: invert(1);"></span>
+    </button>
+    <div class="collapse navbar-collapse" id="navbarNav">
+      <ul class="navbar-nav ms-auto">
+        <li class="nav-item"><a class="nav-link" href="index.html#home">Home</a></li>
+        <li class="nav-item"><a class="nav-link" href="index.html#about">About</a></li>
+        <li class="nav-item"><a class="nav-link" href="index.html#menu">Menu</a></li>
+        <li class="nav-item"><a class="nav-link" href="index.html#reservation">Reserve</a></li>
+        <li class="nav-item"><a class="nav-link" href="index.html#footer">Contact</a></li>
+      </ul>
+      <div class="cart-icon ms-lg-3">
+        <a href="cart.html" class="position-relative">
+          <i class="fas fa-shopping-bag"></i>
+          <span id="cart-count" class="cart-badge">0</span>
+        </a>
+      </div>
+    </div>
+  </div>
+</nav>
+
+<section style="padding: 150px 0 80px;">
+  <div class="container">
+    <div class="row">
+      <div class="col-lg-8">
+        <h2 class="section-title">Your Shopping Cart</h2>
+        <div id="cart-items-container">
+          <div class="text-center py-5">
+            <i class="fas fa-shopping-bag" style="font-size: 4rem; color: var(--gold); opacity: 0.5;"></i>
+            <p class="mt-3">Your cart is empty</p>
+            <a href="index.html#menu" class="btn btn-gold mt-3">Browse Menu</a>
+          </div>
+        </div>
+      </div>
+      
+      <div class="col-lg-4">
+        <div class="cart-summary" style="background: #1a1814; border-radius: 20px; padding: 1.5rem; position: sticky; top: 100px; border: 1px solid rgba(205,164,94,0.3);">
+          <h4 style="color: var(--gold);">Order Summary</h4>
+          <div id="order-summary">
+            <div class="d-flex justify-content-between mb-2">
+              <span>Subtotal:</span>
+              <span id="subtotal">₹0</span>
+            </div>
+            <div class="d-flex justify-content-between mb-2">
+              <span>Tax (5%):</span>
+              <span id="tax">₹0</span>
+            </div>
+            <div class="d-flex justify-content-between mb-3" style="font-size: 1.2rem; font-weight: bold; border-top: 1px solid rgba(205,164,94,0.3); padding-top: 10px;">
+              <span>Total:</span>
+              <span id="total" style="color: var(--gold);">₹0</span>
+            </div>
+          </div>
+          
+          <hr style="border-color: rgba(205,164,94,0.3);">
+          
+          <div class="mb-3">
+            <label class="form-label">Order Type</label>
+            <div>
+              <div class="form-check form-check-inline">
+                <input class="form-check-input" type="radio" name="orderType" id="takeaway" value="takeaway" checked>
+                <label class="form-check-label" for="takeaway">Takeaway</label>
+              </div>
+              <div class="form-check form-check-inline">
+                <input class="form-check-input" type="radio" name="orderType" id="delivery" value="delivery">
+                <label class="form-check-label" for="delivery">Delivery</label>
+              </div>
+            </div>
+          </div>
+          
+          <div id="address-field" style="display: none;">
+            <label class="form-label">Delivery Address</label>
+            <textarea id="deliveryAddress" class="form-control" rows="3" placeholder="Enter your complete address"></textarea>
+          </div>
+          
+          <button id="checkoutBtn" class="btn btn-gold w-100 mt-3">Proceed to Checkout</button>
+          
+          <div class="text-center mt-3">
+            <a href="index.html#menu" class="text-decoration-none" style="color: var(--gold);">← Continue Shopping</a>
+          </div>
+        </div>
+      </div>
+    </div>
+  </div>
+</section>
+
+<footer style="background: #050504; padding: 40px 0 20px; margin-top: 50px;">
+  <div class="container text-center">
+    <small>© 2025 Cheesy Crust Co. – Where every crust tells a story.</small>
+  </div>
+</footer>
+
+<script src="https://cdn.jsdelivr.net/npm/bootstrap@5.3.0-alpha1/dist/js/bootstrap.bundle.min.js"></script>
+<script src="js/api.js"></script>
+<script src="js/cart.js"></script>
+</body>
+</html>
