@@ -32,8 +32,6 @@ let reservationState = {
     specialRequests: "",
     preorderItems: []
 };
-
-// Render menu cards on main page
 function renderMenuCards(filterCategory = "all") {
     const container = document.getElementById("menu-items-container");
     if (!container) return;
@@ -42,6 +40,11 @@ function renderMenuCards(filterCategory = "all") {
     let html = "";
     
     filtered.forEach((item, index) => {
+        // Get reviews for this item
+        const reviews = getItemReviews(item.id);
+        const avgRating = calculateAvgRating(reviews);
+        const stars = generateStars(avgRating);
+        
         html += `
             <div class="col-sm-6 col-md-4 col-lg-4 menu-col" data-aos="fade-up" data-aos-delay="${index * 100}">
                 <div class="menu-card">
@@ -51,13 +54,17 @@ function renderMenuCards(filterCategory = "all") {
                         <span class="menu-price">₹${item.price}</span>
                     </div>
                     <p class="small text-secondary mt-2">${escapeHtml(item.description)}</p>
+                    
+                    <!-- Rating Display -->
+                    <div class="rating-display mt-2" onclick="showReviewsModal('${item.id}', '${escapeHtml(item.name)}')">
+                        <span class="stars">${stars}</span>
+                        <span class="rating-count">(${reviews.length} reviews)</span>
+                        <i class="fas fa-chevron-right" style="color: var(--gold); font-size: 0.7rem; margin-left: 5px;"></i>
+                    </div>
+                    
                     <div class="d-flex justify-content-between align-items-center mt-3">
                         <span><i class="fas fa-star gold-icon"></i> ${item.category === 'breakfast' ? 'Morning Delight' : item.category === 'lunch' ? 'Chef\'s Lunch' : 'Evening Special'}</span>
-                        <button class="btn-add add-to-cart-btn" 
-    data-id="${item.id}" 
-    data-name="${item.name}" 
-    data-price="${item.price}"
-    data-img="${item.img}">Add to Cart</button>
+                        <button class="btn-add add-to-cart-btn" data-id="${item.id}" data-name="${item.name}" data-price="${item.price}" data-img="${item.img}">Add to Cart</button>
                     </div>
                 </div>
             </div>
@@ -66,6 +73,212 @@ function renderMenuCards(filterCategory = "all") {
     
     container.innerHTML = html;
     
+    // Re-attach cart listeners
+    attachCartListeners();
+}
+// Get reviews for specific item
+function getItemReviews(itemId) {
+    const allReviews = JSON.parse(localStorage.getItem('all_reviews') || '[]');
+    return allReviews.filter(r => r.itemId === itemId);
+}
+
+// Calculate average rating
+function calculateAvgRating(reviews) {
+    if (reviews.length === 0) return 0;
+    const sum = reviews.reduce((acc, r) => acc + r.rating, 0);
+    return (sum / reviews.length).toFixed(1);
+}
+
+// Generate star HTML
+function generateStars(rating) {
+    const fullStars = Math.floor(rating);
+    const halfStar = rating % 1 >= 0.5;
+    const emptyStars = 5 - fullStars - (halfStar ? 1 : 0);
+    
+    let stars = '';
+    for (let i = 0; i < fullStars; i++) stars += '<i class="fas fa-star" style="color: #cda45e;"></i>';
+    if (halfStar) stars += '<i class="fas fa-star-half-alt" style="color: #cda45e;"></i>';
+    for (let i = 0; i < emptyStars; i++) stars += '<i class="far fa-star" style="color: #cda45e;"></i>';
+    
+    return stars || '<span class="text-muted">No ratings</span>';
+}
+
+// Show reviews modal
+function showReviewsModal(itemId, itemName) {
+    const reviews = getItemReviews(itemId);
+    const avgRating = calculateAvgRating(reviews);
+    
+    const modalDiv = document.createElement("div");
+    modalDiv.className = "modal-overlay";
+    modalDiv.innerHTML = `
+        <div class="modal-container" style="max-width: 600px;">
+            <div style="display:flex; justify-content:space-between; margin-bottom:1rem;">
+                <h3 style="color:var(--gold);">Reviews for ${escapeHtml(itemName)}</h3>
+                <button id="closeReviewsModalBtn" style="background:none; border:none; color:white; font-size:1.8rem;">&times;</button>
+            </div>
+            
+            <div class="text-center mb-3">
+                <span style="font-size: 2rem; color: var(--gold);">${avgRating}</span>
+                <div class="stars mb-1">${generateStars(avgRating)}</div>
+                <span class="text-muted">${reviews.length} reviews</span>
+            </div>
+            
+            <div id="reviewsList" style="max-height: 400px; overflow-y: auto;">
+                ${renderReviewsList(reviews)}
+            </div>
+            
+            ${isAuthenticated() ? `
+                <div class="mt-4 p-3" style="background: var(--card-light); border-radius: 12px;">
+                    <h6 style="color: var(--gold);">Write a Review</h6>
+                    <div class="rating-input mb-2">
+                        ${[1,2,3,4,5].map(i => `<i class="far fa-star review-star" data-rating="${i}" style="color: #cda45e; font-size: 1.5rem; cursor: pointer; margin-right: 5px;"></i>`).join('')}
+                    </div>
+                    <textarea id="reviewComment" class="form-control mb-2" placeholder="Share your experience..." rows="2" style="background: #0c0b09; color: white; border-color: #3a352e;"></textarea>
+                    <button class="btn-gold btn-sm" onclick="submitReview('${itemId}', '${escapeHtml(itemName)}')">Submit Review</button>
+                </div>
+            ` : `
+                <p class="text-center mt-3"><a href="#" onclick="document.getElementById('userIcon').click(); return false;">Sign in</a> to write a review</p>
+            `}
+        </div>
+    `;
+    
+    document.body.appendChild(modalDiv);
+    
+    // Setup star rating interaction
+    let selectedRating = 0;
+    modalDiv.querySelectorAll('.review-star').forEach(star => {
+        star.addEventListener('click', function() {
+            selectedRating = parseInt(this.getAttribute('data-rating'));
+            updateStarDisplay(modalDiv, selectedRating);
+        });
+        star.addEventListener('mouseover', function() {
+            const rating = parseInt(this.getAttribute('data-rating'));
+            previewStars(modalDiv, rating);
+        });
+    });
+    
+    modalDiv.querySelector('.rating-input').addEventListener('mouseleave', () => {
+        updateStarDisplay(modalDiv, selectedRating);
+    });
+    
+    // Store selected rating
+    modalDiv.setAttribute('data-rating', '0');
+    
+    const closeBtn = modalDiv.querySelector("#closeReviewsModalBtn");
+    closeBtn.addEventListener("click", () => modalDiv.remove());
+    modalDiv.addEventListener("click", (e) => { if(e.target === modalDiv) modalDiv.remove(); });
+}
+
+// Render reviews list
+function renderReviewsList(reviews) {
+    if (reviews.length === 0) {
+        return '<p class="text-center text-muted py-4">No reviews yet. Be the first to review!</p>';
+    }
+    
+    return reviews.reverse().map(review => `
+        <div style="background: var(--card-light); padding: 1rem; border-radius: 12px; margin-bottom: 0.8rem;">
+            <div class="d-flex justify-content-between">
+                <strong>${escapeHtml(review.userName || 'Customer')}</strong>
+                <span style="color: var(--gold);">${'★'.repeat(review.rating)}${'☆'.repeat(5-review.rating)}</span>
+            </div>
+            <p class="mt-2 mb-1">${escapeHtml(review.comment)}</p>
+            <small class="text-muted">${new Date(review.date).toLocaleDateString()}</small>
+        </div>
+    `).join('');
+}
+
+// Update star display
+function updateStarDisplay(modal, rating) {
+    modal.querySelectorAll('.review-star').forEach((star, index) => {
+        if (index < rating) {
+            star.className = 'fas fa-star';
+        } else {
+            star.className = 'far fa-star';
+        }
+    });
+    modal.setAttribute('data-rating', rating);
+}
+
+// Preview stars on hover
+function previewStars(modal, rating) {
+    modal.querySelectorAll('.review-star').forEach((star, index) => {
+        if (index < rating) {
+            star.className = 'fas fa-star';
+        } else {
+            star.className = 'far fa-star';
+        }
+    });
+}
+
+// Submit review
+function submitReview(itemId, itemName) {
+    const modal = document.querySelector('.modal-overlay');
+    const rating = parseInt(modal.getAttribute('data-rating') || '0');
+    const comment = modal.querySelector('#reviewComment').value.trim();
+    
+    if (rating === 0) {
+        showToast('Please select a rating', 'error');
+        return;
+    }
+    
+    if (!comment) {
+        showToast('Please write a review', 'error');
+        return;
+    }
+    
+    // Save review
+    const allReviews = JSON.parse(localStorage.getItem('all_reviews') || '[]');
+    const review = {
+        id: Date.now(),
+        itemId: itemId,
+        itemName: itemName,
+        rating: rating,
+        comment: comment,
+        userName: localStorage.getItem('user_name') || 'Customer',
+        userPhone: localStorage.getItem('user_phone') || '',
+        date: new Date().toISOString()
+    };
+    
+    allReviews.push(review);
+    localStorage.setItem('all_reviews', JSON.stringify(allReviews));
+    
+    // Also save to user reviews
+    const userReviews = JSON.parse(localStorage.getItem('user_reviews') || '[]');
+    userReviews.push(review);
+    localStorage.setItem('user_reviews', JSON.stringify(userReviews));
+    
+    showToast('Review submitted! Thank you!');
+    modal.remove();
+    
+    // Refresh menu to show updated rating
+    const activeFilter = document.querySelector('.filter-btn.active')?.getAttribute('data-filter') || 'all';
+    renderMenuCards(activeFilter);
+}
+
+// Attach cart listeners (extracted for reuse)
+function attachCartListeners() {
+    document.querySelectorAll('.add-to-cart-btn').forEach(btn => {
+        btn.addEventListener('click', async (e) => {
+            const id = btn.getAttribute('data-id');
+            const name = btn.getAttribute('data-name');
+            const price = btn.getAttribute('data-price');
+            const img = btn.getAttribute('data-img') || 'https://via.placeholder.com/100';
+            
+            let cart = JSON.parse(localStorage.getItem('local_cart') || '[]');
+            const existing = cart.find(i => i.id === id);
+            
+            if (existing) {
+                existing.quantity++;
+            } else {
+                cart.push({ id, name, price: parseFloat(price), img, quantity: 1 });
+            }
+            
+            localStorage.setItem('local_cart', JSON.stringify(cart));
+            updateLocalCartCount();
+            showToast(`${name} added to cart!`);
+        });
+    });
+}
     // Attach event listeners to Add to Cart buttons
 document.querySelectorAll('.add-to-cart-btn').forEach(btn => {
     btn.addEventListener('click', async (e) => {
