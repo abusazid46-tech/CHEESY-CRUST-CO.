@@ -1,5 +1,5 @@
 // API Configuration
-const API_BASE_URL = 'https://cheesy-crust-api.onrender.com'; // Update with your Render backend URL
+const API_BASE_URL = 'https://cheesy-crust-api.onrender.com/api/v1'; // Update with your Render backend URL
 
 // API Service Class
 class ApiService {
