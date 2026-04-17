@@ -189,12 +189,16 @@ document.querySelectorAll('.profile-tab').forEach(tab => {
         if (tabId === 'reviews') loadMyReviews();
     });
 });
-
-// Initialize
 document.addEventListener('DOMContentLoaded', () => {
     loadProfile();
+    
+    // Wait for cart.js to load and check pending reviews
+    setTimeout(() => {
+        if (typeof checkPendingReviews === 'function') {
+            checkPendingReviews();
+        }
+    }, 1000);
 });
-
 // Toast helper
 function showToast(message) {
     const toast = document.createElement('div');
