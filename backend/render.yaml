@@ -1,8 +1,11 @@
-services:
+sservices:
   - type: web
     name: cheesy-crust-api
     runtime: python
-    buildCommand: pip install -r requirements.txt
+    buildCommand: |
+      pip install --upgrade pip
+      pip install pydantic==2.4.2 pydantic-core==2.10.1 --no-binary pydantic-core
+      pip install -r requirements.txt
     startCommand: uvicorn main:app --host 0.0.0.0 --port $PORT
     envVars:
       - key: MONGODB_URI
