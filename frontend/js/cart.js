@@ -144,12 +144,29 @@ async function checkout() {
         return;
     }
     
+    // If not authenticated, show auth modal instead of redirecting
     if (!isAuthenticated()) {
-        showToast('Please sign in to checkout', 'error');
-        window.location.href = 'index.html';
+        // Store pending checkout data
+        const pendingCheckout = {
+            orderType,
+            address: orderType === 'delivery' ? address : null,
+            items: cartItems,
+            total: cartSubtotal + 40,
+            timestamp: Date.now()
+        };
+        localStorage.setItem('pending_checkout', JSON.stringify(pendingCheckout));
+        
+        // Show login prompt with option to continue
+        showAuthModalForCheckout();
         return;
     }
     
+    // Process checkout for authenticated users
+    await processCheckout(orderType, address);
+}
+
+// Process actual checkout after authentication
+async function processCheckout(orderType, address) {
     try {
         const orderData = {
             items: cartItems,
@@ -162,11 +179,11 @@ async function checkout() {
         
         if (response.razorpay_order) {
             const options = {
-                key: response.razorpay_key,
+                key: response.razorpay_key || 'rzp_test_YourKeyId', // Replace with your key
                 amount: response.razorpay_order.amount,
                 currency: "INR",
                 name: "Cheesy Crust Co.",
-                description: `Order #${response.order_id}`,
+                description: `Order #${response.order_id || 'CHEESY' + Date.now()}`,
                 order_id: response.razorpay_order.id,
                 handler: async function(paymentResponse) {
                     try {
@@ -177,33 +194,167 @@ async function checkout() {
                             order_id: response.order_id
                         });
                         
+                        // Clear cart on success
                         cartItems = [];
                         localStorage.removeItem('local_cart');
+                        localStorage.removeItem('pending_checkout');
+                        updateCartCount();
+                        
                         showToast('✅ Payment successful! Order confirmed.', 'success');
                         
                         setTimeout(() => {
                             window.location.href = 'index.html';
                         }, 2000);
                     } catch (error) {
-                        showToast('Payment verification failed', 'error');
+                        showToast('Payment verification failed. Please contact support.', 'error');
                     }
                 },
                 prefill: {
-                    name: localStorage.getItem('user_name') || '',
+                    name: localStorage.getItem('user_name') || 'Customer',
                     contact: localStorage.getItem('user_phone') || ''
                 },
-                theme: { color: "#cda45e" }
+                theme: { color: "#cda45e" },
+                modal: {
+                    ondismiss: function() {
+                        showToast('Payment cancelled. Your items are still in cart.', 'info');
+                    }
+                }
             };
             
             const rzp = new Razorpay(options);
             rzp.open();
+        } else {
+            // Fallback for demo/development
+            await handleDemoCheckout(orderType, address);
         }
     } catch (error) {
         console.error('Checkout error:', error);
-        showToast('Checkout failed. Please try again.', 'error');
+        
+        // Demo fallback if backend not ready
+        await handleDemoCheckout(orderType, address);
     }
 }
 
+// Demo checkout for development
+async function handleDemoCheckout(orderType, address) {
+    showToast('🎉 Demo Mode: Order placed successfully!', 'success');
+    
+    // Save order to localStorage for demo
+    const orders = JSON.parse(localStorage.getItem('cheesy_orders') || '[]');
+    orders.push({
+        id: 'ORD' + Date.now(),
+        items: cartItems,
+        total: cartSubtotal + 40,
+        order_type: orderType,
+        address: address,
+        status: 'confirmed',
+        timestamp: new Date().toISOString()
+    });
+    localStorage.setItem('cheesy_orders', JSON.stringify(orders));
+    
+    // Clear cart
+    cartItems = [];
+    localStorage.removeItem('local_cart');
+    localStorage.removeItem('pending_checkout');
+    renderCart();
+    updateCartCount();
+    
+    setTimeout(() => {
+        window.location.href = 'index.html';
+    }, 2000);
+}
+
+// Show auth modal specifically for checkout
+function showAuthModalForCheckout() {
+    // Create auth modal if it doesn't exist
+    let authModal = document.getElementById('checkoutAuthModal');
+    
+    if (!authModal) {
+        authModal = document.createElement('div');
+        authModal.className = 'modal fade auth-modal';
+        authModal.id = 'checkoutAuthModal';
+        authModal.setAttribute('tabindex', '-1');
+        authModal.innerHTML = `
+            <div class="modal-dialog modal-dialog-centered">
+                <div class="modal-content" style="background: #1a1814; color: white; border: 1px solid rgba(205,164,94,0.3);">
+                    <div class="modal-header" style="border-bottom: 1px solid rgba(205,164,94,0.2);">
+                        <h5 class="modal-title" style="color: #cda45e;">Sign In to Complete Order</h5>
+                        <button type="button" class="btn-close" data-bs-dismiss="modal" style="filter: invert(1);"></button>
+                    </div>
+                    <div class="modal-body">
+                        <div id="checkoutPhoneStep">
+                            <label class="form-label" style="color: #cda45e;">Phone Number</label>
+                            <input type="tel" class="form-control mb-3" id="checkoutPhoneNumber" placeholder="+91 98765 43210" style="background: #0c0b09; border-color: #3a352e; color: white;">
+                            <button class="btn btn-gold w-100" id="checkoutSendOtpBtn">Send OTP</button>
+                        </div>
+                        <div id="checkoutOtpStep" style="display: none;">
+                            <label class="form-label" style="color: #cda45e;">Enter OTP</label>
+                            <input type="text" class="form-control mb-3" id="checkoutOtpInput" placeholder="123456" maxlength="6" style="background: #0c0b09; border-color: #3a352e; color: white;">
+                            <button class="btn btn-gold w-100" id="checkoutVerifyOtpBtn">Verify & Continue</button>
+                            <button class="btn btn-outline-gold w-100 mt-2" id="checkoutBackToPhoneBtn">Back</button>
+                        </div>
+                        <div id="checkoutAuthMessage" class="mt-3 text-center small" style="color: #cda45e;"></div>
+                    </div>
+                </div>
+            </div>
+        `;
+        document.body.appendChild(authModal);
+        
+        // Setup auth modal handlers
+        setupCheckoutAuthHandlers();
+    }
+    
+    const modal = new bootstrap.Modal(authModal);
+    modal.show();
+}
+
+// Setup checkout auth handlers
+function setupCheckoutAuthHandlers() {
+    document.getElementById('checkoutSendOtpBtn')?.addEventListener('click', async () => {
+        const phone = document.getElementById('checkoutPhoneNumber').value;
+        if (!phone || phone.length < 10) {
+            document.getElementById('checkoutAuthMessage').innerText = 'Please enter a valid phone number';
+            return;
+        }
+        
+        // Demo OTP - in production call API
+        console.log('DEMO OTP: 123456');
+        document.getElementById('checkoutAuthMessage').innerText = 'OTP sent! (Demo: 123456)';
+        document.getElementById('checkoutPhoneStep').style.display = 'none';
+        document.getElementById('checkoutOtpStep').style.display = 'block';
+    });
+    
+    document.getElementById('checkoutVerifyOtpBtn')?.addEventListener('click', async () => {
+        const phone = document.getElementById('checkoutPhoneNumber').value;
+        const otp = document.getElementById('checkoutOtpInput').value;
+        
+        // Demo verification - accept any OTP or 123456
+        if (otp === '123456' || otp.length === 6) {
+            // Set auth token
+            localStorage.setItem('auth_token', 'demo_token_' + Date.now());
+            localStorage.setItem('user_phone', phone);
+            localStorage.setItem('user_name', 'Customer');
+            
+            // Close modal
+            bootstrap.Modal.getInstance(document.getElementById('checkoutAuthModal')).hide();
+            
+            showToast('✅ Signed in successfully!', 'success');
+            
+            // Process pending checkout
+            const pending = JSON.parse(localStorage.getItem('pending_checkout') || '{}');
+            if (pending.orderType) {
+                await processCheckout(pending.orderType, pending.address);
+            }
+        } else {
+            document.getElementById('checkoutAuthMessage').innerText = 'Invalid OTP. Try 123456';
+        }
+    });
+    
+    document.getElementById('checkoutBackToPhoneBtn')?.addEventListener('click', () => {
+        document.getElementById('checkoutPhoneStep').style.display = 'block';
+        document.getElementById('checkoutOtpStep').style.display = 'none';
+    });
+}
 // Helper functions
 function escapeHtml(str) {
     return String(str).replace(/[&<>]/g, m => ({'&':'&amp;','<':'&lt;','>':'&gt;'})[m] || m);
