@@ -353,7 +353,37 @@ function escapeHtml(str) {
         return m;
     });
 }
+// Check login status and update UI
+function updateAuthUI() {
+    const userMenuContainer = document.getElementById('userMenuContainer');
+    const loginIcon = document.getElementById('loginIcon');
+    
+    if (isAuthenticated()) {
+        if (userMenuContainer) userMenuContainer.style.display = 'block';
+        if (loginIcon) loginIcon.style.display = 'none';
+    } else {
+        if (userMenuContainer) userMenuContainer.style.display = 'none';
+        if (loginIcon) loginIcon.style.display = 'block';
+    }
+}
 
+// Logout function
+function logout() {
+    localStorage.removeItem('auth_token');
+    localStorage.removeItem('user_phone');
+    localStorage.removeItem('user_name');
+    localStorage.removeItem('local_cart');
+    
+    updateAuthUI();
+    updateLocalCartCount();
+    
+    showToast('Logged out successfully');
+    
+    // Redirect to home if on protected page
+    if (window.location.pathname.includes('profile.html')) {
+        window.location.href = 'index.html';
+    }
+}
 // ========== RESERVATION SYSTEM ==========
 
 // Update pre-order badge
