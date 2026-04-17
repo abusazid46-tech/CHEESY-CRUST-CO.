@@ -834,13 +834,29 @@
     <div class="row justify-content-center">
       <div class="col-lg-10" data-aos="zoom-in">
         
+        <!-- Section Heading -->
+        <div class="text-center mb-4">
+          <h2 class="section-title">Reserve Your Table</h2>
+          <p style="color: #b0a89b; margin-top: 10px; font-size: 1.1rem;">
+            <i class="fas fa-calendar-check gold-icon"></i> 
+            Secure your spot & pre‑order signature dishes ✨
+          </p>
+        </div>
+        
         <!-- MAIN RESERVATION COMPONENT -->
         <div class="reservation-premium">
           <!-- Tabs navigation -->
           <div class="res-tabs">
-            <button class="res-tab active" data-tab="details"><i class="fas fa-calendar-alt"></i> Table details</button>
-            <button class="res-tab" data-tab="preorder"><i class="fas fa-utensils"></i> Pre-order menu <span id="preorderBadge" class="badge" style="background:var(--gold); color:#0c0b09; margin-left:6px;">0</span></button>
-            <button class="res-tab" data-tab="summary"><i class="fas fa-clipboard-list"></i> Summary & Payment</button>
+            <button class="res-tab active" data-tab="details">
+              <i class="fas fa-calendar-alt"></i> Table details
+            </button>
+            <button class="res-tab" data-tab="preorder">
+              <i class="fas fa-utensils"></i> Pre-order menu 
+              <span id="preorderBadge" class="badge" style="background:var(--gold); color:#0c0b09; margin-left:6px;">0</span>
+            </button>
+            <button class="res-tab" data-tab="summary">
+              <i class="fas fa-clipboard-list"></i> Summary & Payment
+            </button>
           </div>
 
           <!-- TAB 1: Table details pane -->
@@ -893,7 +909,9 @@
                 <textarea class="form-control" id="specialRequests" rows="2" placeholder="e.g., vegan options, anniversary celebration..."></textarea>
               </div>
               <div class="d-flex justify-content-end mt-3">
-                <button type="button" class="btn-gold" id="nextToPreorderBtn"><i class="fas fa-arrow-right"></i> Continue to pre-order</button>
+                <button type="button" class="btn-gold" id="nextToPreorderBtn">
+                  <i class="fas fa-arrow-right"></i> Continue to pre-order
+                </button>
               </div>
             </form>
           </div>
@@ -902,28 +920,41 @@
           <div id="tab-preorder" class="tab-pane">
             <div style="display: flex; justify-content: space-between; align-items: center; flex-wrap: wrap; gap: 12px; margin-bottom: 20px;">
               <h5 style="margin:0; color: var(--gold);"><i class="fas fa-shopping-basket"></i> Your pre-order items</h5>
-              <button class="btn-outline-gold" id="browseMenuBtn"><i class="fas fa-plus-circle"></i> Browse full menu</button>
+              <button class="btn-outline-gold" id="browseMenuBtn">
+                <i class="fas fa-plus-circle"></i> Browse full menu
+              </button>
             </div>
             <div id="preorderItemsContainer" class="preorder-list-container">
-              <div class="empty-preorder"><i class="fas fa-pizza-slice fa-2x mb-2"></i><p>No items yet. Click "Browse menu" to add delicious dishes.</p></div>
+              <div class="empty-preorder">
+                <i class="fas fa-pizza-slice fa-2x mb-2"></i>
+                <p>No items yet. Click "Browse menu" to add delicious dishes.</p>
+              </div>
             </div>
             <div class="d-flex justify-content-between align-items-center mt-3 pt-2 border-top border-secondary">
               <span><strong>Subtotal:</strong></span>
               <span id="preorderSubtotal" style="font-size:1.3rem; font-weight:bold; color:var(--gold);">₹0</span>
             </div>
             <div class="d-flex justify-content-end mt-4 gap-2">
-              <button class="btn-outline-gold" id="backToDetailsBtn"><i class="fas fa-chevron-left"></i> Back</button>
-              <button class="btn-gold" id="goToSummaryBtn">Review & Payment <i class="fas fa-chevron-right"></i></button>
+              <button class="btn-outline-gold" id="backToDetailsBtn">
+                <i class="fas fa-chevron-left"></i> Back
+              </button>
+              <button class="btn-gold" id="goToSummaryBtn">
+                Review & Payment <i class="fas fa-chevron-right"></i>
+              </button>
             </div>
           </div>
 
           <!-- TAB 3: Summary & Payment -->
           <div id="tab-summary" class="tab-pane">
             <div class="summary-card">
-              <h5 style="color:var(--gold); margin-bottom: 1rem;"><i class="fas fa-receipt"></i> Reservation details</h5>
+              <h5 style="color:var(--gold); margin-bottom: 1rem;">
+                <i class="fas fa-receipt"></i> Reservation details
+              </h5>
               <div id="summaryDetailsDisplay"></div>
               <hr style="background:#3a352e;">
-              <h5 style="color:var(--gold); margin: 1rem 0 0.8rem 0;"><i class="fas fa-hamburger"></i> Pre-ordered items</h5>
+              <h5 style="color:var(--gold); margin: 1rem 0 0.8rem 0;">
+                <i class="fas fa-hamburger"></i> Pre-ordered items
+              </h5>
               <div id="summaryPreorderList"></div>
               <div class="summary-row total-row">
                 <span>Total Amount</span>
@@ -931,8 +962,12 @@
               </div>
             </div>
             <div class="d-flex justify-content-between gap-3">
-              <button class="btn-outline-gold" id="backToPreorderSummaryBtn"><i class="fas fa-edit"></i> Edit order</button>
-              <button class="btn-gold" id="confirmAndPayBtn"><i class="fas fa-lock"></i> Confirm & Pay Now</button>
+              <button class="btn-outline-gold" id="backToPreorderSummaryBtn">
+                <i class="fas fa-edit"></i> Edit order
+              </button>
+              <button class="btn-gold" id="confirmAndPayBtn">
+                <i class="fas fa-lock"></i> Confirm & Pay Now
+              </button>
             </div>
           </div>
         </div>
