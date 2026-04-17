@@ -1,50 +1,137 @@
-# backend/database.py
-from motor.motor_asyncio import AsyncIOMotorClient
-from config.settings import settings
+"""
+MongoDB connection setup using Motor (async driver)
+"""
+
+from motor.motor_asyncio import AsyncIOMotorClient, AsyncIOMotorDatabase
+from pymongo import ASCENDING, DESCENDING, IndexModel
 import logging
+
+from config.settings import settings
 
 logger = logging.getLogger(__name__)
 
-class MongoDB:
-    client: AsyncIOMotorClient = None
-    database = None
+client: AsyncIOMotorClient | None = None
+db: AsyncIOMotorDatabase | None = None
 
-db = MongoDB()
 
 async def connect_to_mongo():
-    """Establish MongoDB connection"""
-    db.client = AsyncIOMotorClient(settings.MONGODB_URI)
-    db.database = db.client[settings.DATABASE_NAME]
+    """Initialize MongoDB connection and create indexes"""
+    global client, db
     
-    # Create indexes
-    await create_indexes()
-    logger.info("MongoDB indexes created")
+    try:
+        client = AsyncIOMotorClient(
+            settings.MONGODB_URI,
+            maxPoolSize=settings.MONGODB_MAX_POOL_SIZE,
+            minPoolSize=settings.MONGODB_MIN_POOL_SIZE,
+            serverSelectionTimeoutMS=5000
+        )
+        db = client[settings.MONGODB_DB_NAME]
+        
+        # Test connection
+        await client.admin.command("ping")
+        logger.info("MongoDB connection established")
+        
+        # Create indexes
+        await create_indexes()
+        
+    except Exception as e:
+        logger.error(f"MongoDB connection failed: {e}")
+        raise
+
 
 async def close_mongo_connection():
     """Close MongoDB connection"""
-    if db.client:
-        db.client.close()
+    global client
+    if client:
+        client.close()
+        logger.info("MongoDB connection closed")
+
 
 async def create_indexes():
-    """Create necessary database indexes"""
-    # Users collection
-    await db.database.users.create_index("phone", unique=True)
-    await db.database.users.create_index("email", sparse=True)
-    
-    # OTP sessions
-    await db.database.otp_sessions.create_index("phone")
-    await db.database.otp_sessions.create_index("expires_at", expire_after_seconds=0)
-    
-    # Menu items
-    await db.database.menu_items.create_index("category")
-    
-    # Orders
-    await db.database.orders.create_index("user_id")
-    await db.database.orders.create_index("created_at")
-    
-    # Reservations
-    await db.database.reservations.create_index("phone")
-    await db.database.reservations.create_index("date")
+    """Create all necessary indexes for collections"""
+    try:
+        # Users collection indexes
+        await db.users.create_index("phone", unique=True)
+        await db.users.create_index("email", sparse=True)
+        
+        # OTP sessions - TTL index for auto-expiry
+        await db.otp_sessions.create_index("expires_at", expireAfterSeconds=0)
+        await db.otp_sessions.create_index("phone")
+        
+        # Menu items indexes
+        await db.menu_items.create_index("slug", unique=True)
+        await db.menu_items.create_index("category")
+        await db.menu_items.create_index("is_available")
+        
+        # Carts index
+        await db.carts.create_index("user_id", unique=True)
+        
+        # Orders indexes
+        await db.orders.create_index("order_number", unique=True)
+        await db.orders.create_index("user_id")
+        await db.orders.create_index("status")
+        await db.orders.create_index([("created_at", DESCENDING)])
+        
+        # Reservations indexes
+        await db.reservations.create_index("phone")
+        await db.reservations.create_index([("date", DESCENDING)])
+        await db.reservations.create_index("status")
+        
+        # Payments index
+        await db.payments.create_index("razorpay_order_id", unique=True)
+        await db.payments.create_index("order_id")
+        
+        # Reviews indexes
+        await db.reviews.create_index("item_id")
+        await db.reviews.create_index("user_id")
+        await db.reviews.create_index("order_id")
+        
+        logger.info("Database indexes created successfully")
+        
+    except Exception as e:
+        logger.warning(f"Index creation warning: {e}")
 
-def get_database():
-    return db.database
+
+def get_database() -> AsyncIOMotorDatabase:
+    """Dependency to get database instance"""
+    if db is None:
+        raise RuntimeError("Database not initialized")
+    return db
+
+
+# Collection helper properties
+class Collections:
+    @property
+    def users(self):
+        return db.users
+    
+    @property
+    def otp_sessions(self):
+        return db.otp_sessions
+    
+    @property
+    def menu_items(self):
+        return db.menu_items
+    
+    @property
+    def carts(self):
+        return db.carts
+    
+    @property
+    def orders(self):
+        return db.orders
+    
+    @property
+    def reservations(self):
+        return db.reservations
+    
+    @property
+    def payments(self):
+        return db.payments
+    
+    @property
+    def reviews(self):
+        return db.reviews
+
+
+collections = Collections()
