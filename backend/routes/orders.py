@@ -1,123 +1,194 @@
-# backend/routes/orders.py
-from fastapi import APIRouter, HTTPException, Depends
-from typing import List
-from bson import ObjectId
-from datetime import datetime
+"""
+Order routes - order creation and management
+"""
 
-from database import get_database
-from models.order import OrderCreate, Order, OrderStatus, PaymentStatus
-from dependencies import get_current_user, require_admin
+from fastapi import APIRouter, HTTPException, status, Depends, Query
+from typing import Dict, Any, Optional
+
+from middleware import auth_required, get_current_user, get_current_admin_user
+from schemas.order import OrderCreateRequest, OrderResponse, OrderStatusUpdateRequest
+from services import order_service
+from models.order import OrderStatus
 
 router = APIRouter()
 
+
 @router.post("/create")
-async def create_order(order_data: OrderCreate, current_user=Depends(get_current_user)):
+async def create_order(
+    request: OrderCreateRequest,
+    payload: Dict[str, Any] = Depends(auth_required)
+):
     """Create a new order"""
-    db = get_database()
+    user = await get_current_user(payload)
     
-    user_id = str(current_user["_id"])
+    if not user:
+        raise HTTPException(
+            status_code=status.HTTP_404_NOT_FOUND,
+            detail="User not found"
+        )
     
-    # Get user's cart
-    cart = await db.carts.find_one({"user_id": user_id})
-    
-    if not cart or not cart.get("items"):
-        raise HTTPException(status_code=400, detail="Cart is empty")
-    
-    # Validate delivery address if order type is delivery
-    if order_data.order_type == "delivery" and not order_data.address:
-        raise HTTPException(status_code=400, detail="Delivery address required")
-    
-    # Create order items
-    order_items = []
-    for item in cart["items"]:
-        order_items.append({
-            "menu_item_id": item["menu_item_id"],
-            "name": item["name"],
-            "price": item["price"],
-            "quantity": item["quantity"]
-        })
+    # Validate address for delivery
+    if request.order_type == "delivery" and not request.address:
+        raise HTTPException(
+            status_code=status.HTTP_400_BAD_REQUEST,
+            detail="Delivery address is required"
+        )
     
     # Create order
-    order = Order(
-        user_id=user_id,
-        items=order_items,
-        total=cart["total"],
-        order_type=order_data.order_type,
-        address=order_data.address if order_data.order_type == "delivery" else None,
-        payment_status=PaymentStatus.PENDING,
-        order_status=OrderStatus.PENDING
+    items = [item.model_dump() for item in request.items]
+    order = await order_service.create_order(
+        user_id=user["_id"],
+        items=items,
+        order_type=request.order_type,
+        address=request.address,
+        notes=request.notes
     )
-    
-    result = await db.orders.insert_one(order.dict())
-    order_id = str(result.inserted_id)
-    
-    # Clear user's cart
-    await db.carts.delete_one({"user_id": user_id})
-    
-    return {
-        "order_id": order_id,
-        "total": cart["total"],
-        "message": "Order created successfully"
-    }
-
-@router.get("/user")
-async def get_user_orders(current_user=Depends(get_current_user)):
-    """Get current user's orders"""
-    db = get_database()
-    
-    user_id = str(current_user["_id"])
-    
-    cursor = db.orders.find({"user_id": user_id}).sort("created_at", -1)
-    orders = await cursor.to_list(length=None)
-    
-    for order in orders:
-        order["_id"] = str(order["_id"])
-    
-    return orders
-
-@router.get("/{order_id}")
-async def get_order_details(order_id: str, current_user=Depends(get_current_user)):
-    """Get order details"""
-    db = get_database()
-    
-    if not ObjectId.is_valid(order_id):
-        raise HTTPException(status_code=400, detail="Invalid order ID")
-    
-    order = await db.orders.find_one({"_id": ObjectId(order_id)})
     
     if not order:
-        raise HTTPException(status_code=404, detail="Order not found")
+        raise HTTPException(
+            status_code=status.HTTP_400_BAD_REQUEST,
+            detail="Failed to create order"
+        )
     
-    # Check if user owns the order or is admin
-    user_id = str(current_user["_id"])
-    if str(order["user_id"]) != user_id and not current_user.get("is_admin"):
-        raise HTTPException(status_code=403, detail="Access denied")
-    
-    order["_id"] = str(order["_id"])
-    return order
+    return {
+        "success": True,
+        "message": "Order created successfully",
+        "order_id": str(order.id),
+        "order_number": order.order_number,
+        "total": order.total
+    }
 
-@router.put("/{order_id}/status", dependencies=[Depends(require_admin)])
-async def update_order_status(order_id: str, status: str, current_user=Depends(require_admin)):
-    """Update order status (admin only)"""
-    db = get_database()
+
+@router.get("/user")
+async def get_user_orders(
+    payload: Dict[str, Any] = Depends(auth_required),
+    limit: int = Query(50, ge=1, le=100)
+):
+    """Get current user's orders"""
+    user = await get_current_user(payload)
     
-    if not ObjectId.is_valid(order_id):
-        raise HTTPException(status_code=400, detail="Invalid order ID")
+    if not user:
+        raise HTTPException(
+            status_code=status.HTTP_404_NOT_FOUND,
+            detail="User not found"
+        )
     
-    if status not in [s.value for s in OrderStatus]:
-        raise HTTPException(status_code=400, detail="Invalid status")
+    orders = await order_service.get_user_orders(user["_id"], limit)
     
-    result = await db.orders.update_one(
-        {"_id": ObjectId(order_id)},
-        {
-            "$set": {
-                "order_status": status,
-                "updated_at": datetime.utcnow()
-            }
-        }
+    return {
+        "success": True,
+        "orders": orders,
+        "total": len(orders)
+    }
+
+
+@router.get("/{order_id}")
+async def get_order(
+    order_id: str,
+    payload: Dict[str, Any] = Depends(auth_required)
+):
+    """Get order by ID"""
+    user = await get_current_user(payload)
+    
+    if not user:
+        raise HTTPException(
+            status_code=status.HTTP_404_NOT_FOUND,
+            detail="User not found"
+        )
+    
+    order = await order_service.get_order_by_id(order_id)
+    
+    if not order:
+        raise HTTPException(
+            status_code=status.HTTP_404_NOT_FOUND,
+            detail="Order not found"
+        )
+    
+    # Check if user owns the order (unless admin)
+    if str(order["user_id"]) != user["_id"] and not user.get("is_admin"):
+        raise HTTPException(
+            status_code=status.HTTP_403_FORBIDDEN,
+            detail="Access denied"
+        )
+    
+    return {
+        "success": True,
+        "order": order
+    }
+
+
+@router.get("/track/{order_number}")
+async def track_order(order_number: str):
+    """Track order by order number (public)"""
+    order = await order_service.get_order_by_number(order_number)
+    
+    if not order:
+        raise HTTPException(
+            status_code=status.HTTP_404_NOT_FOUND,
+            detail="Order not found"
+        )
+    
+    # Return limited info for tracking
+    return {
+        "success": True,
+        "order_number": order["order_number"],
+        "status": order["status"],
+        "created_at": order["created_at"],
+        "estimated_delivery": "45-60 minutes"
+    }
+
+
+# ========== ADMIN ROUTES ==========
+
+@router.get("/admin/all")
+async def get_all_orders(
+    admin: Dict[str, Any] = Depends(get_current_admin_user),
+    status: Optional[str] = Query(None),
+    page: int = Query(1, ge=1),
+    per_page: int = Query(20, ge=1, le=100)
+):
+    """Get all orders (admin only)"""
+    result = await order_service.get_all_orders(
+        status=status,
+        page=page,
+        per_page=per_page
     )
     
-    if result.matched_count == 0:
-        raise HTTPException(status_code=404, detail="Order not found")
+    return {
+        "success": True,
+        **result
+    }
+
+
+@router.patch("/admin/{order_id}/status")
+async def update_order_status(
+    order_id: str,
+    request: OrderStatusUpdateRequest,
+    admin: Dict[str, Any] = Depends(get_current_admin_user)
+):
+    """Update order status (admin only)"""
+    try:
+        status_enum = OrderStatus(request.status)
+    except ValueError:
+        raise HTTPException(
+            status_code=status.HTTP_400_BAD_REQUEST,
+            detail="Invalid order status"
+        )
     
-    return {"message": f"Order status updated to {status}"}
+    order = await order_service.update_order_status(
+        order_id,
+        status_enum,
+        request.notes
+    )
+    
+    if not order:
+        raise HTTPException(
+            status_code=status.HTTP_404_NOT_FOUND,
+            detail="Order not found"
+        )
+    
+    return {
+        "success": True,
+        "message": f"Order status updated to {request.status}",
+        "order": order
+    }
