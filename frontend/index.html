@@ -169,7 +169,17 @@
       color: #cda45e !important;
       font-size: 1.6rem;
     }
-
+.dropdown-item {
+    padding: 10px 20px;
+    transition: all 0.2s;
+}
+.dropdown-item:hover {
+    background: rgba(205,164,94,0.2);
+    color: var(--gold) !important;
+}
+.user-icon .dropdown-menu {
+    margin-top: 10px;
+}
     /* Auth Modal */
     .auth-modal .modal-content {
       background: #1a1814;
@@ -750,7 +760,7 @@
          width="60"
          style="border-radius: 50%; object-fit: cover;">
     <span>Cheesy Crust Co.</span>
-</a>
+   </a>
     <button class="navbar-toggler" type="button" data-bs-toggle="collapse" data-bs-target="#navbarNav">
       <span class="navbar-toggler-icon" style="filter: invert(1);"></span>
     </button>
@@ -760,13 +770,23 @@
         <li class="nav-item"><a class="nav-link" href="#about">About</a></li>
         <li class="nav-item"><a class="nav-link" href="#menu">Menu</a></li>
         <li class="nav-item"><a class="nav-link" href="#reservation">Reserve</a></li>
-        
         <li class="nav-item"><a class="nav-link" href="#footer">Contact</a></li>
       </ul>
-      <!-- User Icon -->
-      <div class="user-icon" id="userIcon" onclick="window.location.href='profile.html'">
-    <i class="fas fa-user-circle"></i>
-</div>
+      
+      <!-- User Dropdown Menu (shown when logged in) -->
+      <div class="user-icon dropdown" id="userMenuContainer" style="display: none;">
+        <i class="fas fa-user-circle" data-bs-toggle="dropdown" style="cursor: pointer;"></i>
+        <ul class="dropdown-menu dropdown-menu-end" style="background: #1a1814; border: 1px solid rgba(205,164,94,0.3);">
+          <li><a class="dropdown-item" href="profile.html" style="color: white;"><i class="fas fa-user gold-icon"></i> My Profile</a></li>
+          <li><a class="dropdown-item" href="#" id="logoutBtn" style="color: white;"><i class="fas fa-sign-out-alt gold-icon"></i> Logout</a></li>
+        </ul>
+      </div>
+
+      <!-- Login Icon (shown when NOT logged in) -->
+      <div class="user-icon" id="loginIcon" style="display: block;">
+        <i class="fas fa-user-circle" data-bs-toggle="modal" data-bs-target="#authModal"></i>
+      </div>
+      
       <!-- Shopping Cart Icon with Badge -->
       <div class="cart-icon">
         <a href="cart.html" class="position-relative" id="cartLink" style="text-decoration: none;">
