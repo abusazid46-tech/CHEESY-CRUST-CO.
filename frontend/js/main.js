@@ -21,7 +21,26 @@ const FULL_MENU = [
     { id: "d5", name: "Pepperoni Pizza", category: "dinner", price: 560, description: "Spicy pepperoni, mozzarella", img: "https://images.unsplash.com/photo-1628840042765-356cda07504e?w=400" },
     { id: "d6", name: "Tiramisu", category: "dinner", price: 290, description: "Classic Italian dessert", img: "https://images.unsplash.com/photo-1571877227200-a0d98ea607e9?w=400" }
 ];
+// Add sample reviews if none exist
+function initSampleReviews() {
+    const existing = localStorage.getItem('all_reviews');
+    if (!existing) {
+        const sampleReviews = [
+            { id: 1, itemId: 'b1', itemName: 'Golden Cheese Croissant', rating: 5, comment: 'Absolutely delicious! Flaky and cheesy.', userName: 'Rahul S.', date: '2024-01-15' },
+            { id: 2, itemId: 'b1', itemName: 'Golden Cheese Croissant', rating: 4, comment: 'Very good, but a bit pricey.', userName: 'Priya M.', date: '2024-01-10' },
+            { id: 3, itemId: 'l1', itemName: 'Truffle Mushroom Pasta', rating: 5, comment: 'Best pasta in Silchar! Creamy and rich.', userName: 'Amit D.', date: '2024-01-12' },
+            { id: 4, itemId: 'd1', itemName: 'Cheesy Crust Signature', rating: 5, comment: 'The signature pizza is amazing!', userName: 'Neha K.', date: '2024-01-08' },
+            { id: 5, itemId: 'd2', itemName: 'Filet Mignon Steak', rating: 4, comment: 'Cooked perfectly, great ambience.', userName: 'Vikram P.', date: '2024-01-05' },
+        ];
+        localStorage.setItem('all_reviews', JSON.stringify(sampleReviews));
+    }
+}
 
+// Call in DOMContentLoaded
+document.addEventListener('DOMContentLoaded', () => {
+    initSampleReviews();
+    // ... rest of initialization
+});
 // Reservation state
 let reservationState = {
     name: "",
