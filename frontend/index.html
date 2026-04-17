@@ -1123,6 +1123,10 @@
     initBackToTop();
     const dateInput = document.getElementById('resDate');
     if(dateInput) dateInput.min = new Date().toISOString().split('T')[0];
+    // Check for pending reviews on homepage
+if (typeof checkPendingReviews === 'function') {
+    setTimeout(checkPendingReviews, 2000);
+}
   });
 </script>
 </body>
