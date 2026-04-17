@@ -33,6 +33,13 @@ class ReservationStatus(str, Enum):
     NO_SHOW = "no_show"
 
 
+class PaymentStatus(str, Enum):  # <-- ADD THIS
+    PENDING = "pending"
+    PAID = "paid"
+    FAILED = "failed"
+    REFUNDED = "refunded"
+
+
 class PreOrderItem(BaseModel):
     """Pre-order item for reservation"""
     item_id: str
@@ -54,7 +61,7 @@ class Reservation(BaseModel):
     preorder_items: List[PreOrderItem] = []
     preorder_total: float = 0.0
     status: ReservationStatus = ReservationStatus.PENDING
-    payment_status: PaymentStatus = PaymentStatus.PENDING
+    payment_status: PaymentStatus = PaymentStatus.PENDING  # <-- NOW DEFINED
     payment_id: Optional[str] = None
     created_at: datetime = Field(default_factory=datetime.utcnow)
     updated_at: datetime = Field(default_factory=datetime.utcnow)
