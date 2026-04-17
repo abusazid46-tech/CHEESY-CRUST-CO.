@@ -1,77 +1,216 @@
-# backend/routes/reservation.py
-from fastapi import APIRouter, HTTPException, Depends
-from typing import List
-from bson import ObjectId
+"""
+Reservation routes - table booking
+"""
 
-from database import get_database
-from models.reservation import ReservationCreate, Reservation
-from dependencies import get_current_user, require_admin
+from fastapi import APIRouter, HTTPException, status, Depends, Query
+from typing import Dict, Any, Optional
+from datetime import date
+
+from middleware import auth_required, get_current_user, get_current_admin_user
+from schemas.reservation import (
+    ReservationCreateRequest, ReservationResponse,
+    ReservationAvailabilityRequest
+)
+from services import reservation_service
+from models.reservation import ReservationStatus
 
 router = APIRouter()
 
-@router.post("/")
-async def create_reservation(reservation_data: ReservationCreate, current_user=Depends(get_current_user)):
+
+@router.post("")
+async def create_reservation(
+    request: ReservationCreateRequest,
+    payload: Optional[Dict[str, Any]] = Depends(auth_required)
+):
     """Create a new table reservation"""
-    db = get_database()
+    user = await get_current_user(payload) if payload else None
     
-    # Validate pre-order items
-    pre_order_items = []
-    for item in reservation_data.pre_order_items:
-        if not ObjectId.is_valid(item.get("menu_item_id")):
-            raise HTTPException(status_code=400, detail="Invalid menu item ID")
-        
-        menu_item = await db.menu_items.find_one({"_id": ObjectId(item.get("menu_item_id"))})
-        
-        if not menu_item:
-            raise HTTPException(status_code=404, detail=f"Menu item {item.get('name')} not found")
-        
-        pre_order_items.append({
-            "menu_item_id": item.get("menu_item_id"),
-            "name": item.get("name"),
-            "quantity": item.get("quantity", 1)
-        })
+    preorder_items = [item.model_dump() for item in request.preorder_items]
     
-    # Create reservation
-    reservation = Reservation(
-        name=reservation_data.name,
-        phone=reservation_data.phone,
-        date=reservation_data.date,
-        time=reservation_data.time,
-        guests=reservation_data.guests,
-        pre_order_items=pre_order_items
+    success, reservation, message = await reservation_service.create_reservation(
+        name=request.name,
+        phone=request.phone,
+        reservation_date=request.date,
+        reservation_time=request.time,
+        guests=request.guests,
+        special_requests=request.special_requests,
+        preorder_items=preorder_items,
+        user_id=user["_id"] if user else None
     )
     
-    result = await db.reservations.insert_one(reservation.dict())
+    if not success:
+        raise HTTPException(
+            status_code=status.HTTP_400_BAD_REQUEST,
+            detail=message
+        )
     
     return {
-        "reservation_id": str(result.inserted_id),
-        "message": "Table reserved successfully!"
+        "success": True,
+        "message": message,
+        "reservation_id": str(reservation.id),
+        "preorder_total": reservation.preorder_total
     }
 
-@router.get("/all", dependencies=[Depends(require_admin)])
-async def get_all_reservations(current_user=Depends(require_admin)):
-    """Get all reservations (admin only)"""
-    db = get_database()
+
+@router.get("/availability")
+async def check_availability(
+    date: str = Query(..., description="Date in YYYY-MM-DD format"),
+    time: str = Query(..., description="Time in HH:MM format"),
+    guests: int = Query(..., ge=1)
+):
+    """Check table availability"""
+    try:
+        reservation_date = date.fromisoformat(date)
+    except ValueError:
+        raise HTTPException(
+            status_code=status.HTTP_400_BAD_REQUEST,
+            detail="Invalid date format. Use YYYY-MM-DD"
+        )
     
-    cursor = db.reservations.find().sort("date", -1)
-    reservations = await cursor.to_list(length=None)
+    available, info = await reservation_service.check_availability(
+        reservation_date, time, guests
+    )
     
-    for reservation in reservations:
-        reservation["_id"] = str(reservation["_id"])
+    return {
+        "success": True,
+        "available": available,
+        **info
+    }
+
+
+@router.get("/slots/{date_str}")
+async def get_available_slots(
+    date_str: str,
+    guests: int = Query(2, ge=1)
+):
+    """Get available time slots for a date"""
+    try:
+        reservation_date = date.fromisoformat(date_str)
+    except ValueError:
+        raise HTTPException(
+            status_code=status.HTTP_400_BAD_REQUEST,
+            detail="Invalid date format. Use YYYY-MM-DD"
+        )
     
-    return reservations
+    slots = await reservation_service.get_available_slots(reservation_date, guests)
+    
+    return {
+        "success": True,
+        "date": date_str,
+        "guests": guests,
+        "slots": slots
+    }
+
 
 @router.get("/user")
-async def get_user_reservations(current_user=Depends(get_current_user)):
+async def get_user_reservations(
+    payload: Dict[str, Any] = Depends(auth_required)
+):
     """Get current user's reservations"""
-    db = get_database()
+    user = await get_current_user(payload)
     
-    phone = current_user["phone"]
+    if not user:
+        raise HTTPException(
+            status_code=status.HTTP_404_NOT_FOUND,
+            detail="User not found"
+        )
     
-    cursor = db.reservations.find({"phone": phone}).sort("date", -1)
-    reservations = await cursor.to_list(length=None)
+    reservations = await reservation_service.get_user_reservations(user["_id"])
     
-    for reservation in reservations:
-        reservation["_id"] = str(reservation["_id"])
+    return {
+        "success": True,
+        "reservations": reservations,
+        "total": len(reservations)
+    }
+
+
+@router.get("/{reservation_id}")
+async def get_reservation(reservation_id: str):
+    """Get reservation by ID (public)"""
+    reservation = await reservation_service.get_reservation_by_id(reservation_id)
     
-    return reservations
+    if not reservation:
+        raise HTTPException(
+            status_code=status.HTTP_404_NOT_FOUND,
+            detail="Reservation not found"
+        )
+    
+    return {
+        "success": True,
+        "reservation": reservation
+    }
+
+
+@router.get("/lookup/{phone}")
+async def lookup_reservations(phone: str):
+    """Look up reservations by phone number"""
+    reservations = await reservation_service.get_reservations_by_phone(phone)
+    
+    return {
+        "success": True,
+        "reservations": reservations,
+        "total": len(reservations)
+    }
+
+
+# ========== ADMIN ROUTES ==========
+
+@router.get("/admin/all")
+async def get_all_reservations(
+    admin: Dict[str, Any] = Depends(get_current_admin_user),
+    date_filter: Optional[str] = Query(None),
+    status: Optional[str] = Query(None),
+    page: int = Query(1, ge=1),
+    per_page: int = Query(20, ge=1, le=100)
+):
+    """Get all reservations (admin only)"""
+    filter_date = None
+    if date_filter:
+        try:
+            filter_date = date.fromisoformat(date_filter)
+        except ValueError:
+            pass
+    
+    result = await reservation_service.get_all_reservations(
+        date_filter=filter_date,
+        status=status,
+        page=page,
+        per_page=per_page
+    )
+    
+    return {
+        "success": True,
+        **result
+    }
+
+
+@router.patch("/admin/{reservation_id}/status")
+async def update_reservation_status(
+    reservation_id: str,
+    status: str,
+    admin: Dict[str, Any] = Depends(get_current_admin_user)
+):
+    """Update reservation status (admin only)"""
+    try:
+        status_enum = ReservationStatus(status)
+    except ValueError:
+        raise HTTPException(
+            status_code=status.HTTP_400_BAD_REQUEST,
+            detail="Invalid reservation status"
+        )
+    
+    success = await reservation_service.update_reservation_status(
+        reservation_id,
+        status_enum
+    )
+    
+    if not success:
+        raise HTTPException(
+            status_code=status.HTTP_404_NOT_FOUND,
+            detail="Reservation not found"
+        )
+    
+    return {
+        "success": True,
+        "message": f"Reservation status updated to {status}"
+    }
