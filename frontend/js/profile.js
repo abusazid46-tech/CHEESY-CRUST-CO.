@@ -1,3 +1,13 @@
+// Self-contained auth check
+const authToken = localStorage.getItem('auth_token');
+if (!authToken) {
+    window.location.href = 'index.html';
+}
+
+// Define local isAuthenticated
+function isAuthenticated() {
+    return !!localStorage.getItem('auth_token');
+}
 // Check authentication
 if (!isAuthenticated()) {
     window.location.href = 'index.html';
