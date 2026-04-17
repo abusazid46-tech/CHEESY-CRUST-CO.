@@ -53,7 +53,11 @@ function renderMenuCards(filterCategory = "all") {
                     <p class="small text-secondary mt-2">${escapeHtml(item.description)}</p>
                     <div class="d-flex justify-content-between align-items-center mt-3">
                         <span><i class="fas fa-star gold-icon"></i> ${item.category === 'breakfast' ? 'Morning Delight' : item.category === 'lunch' ? 'Chef\'s Lunch' : 'Evening Special'}</span>
-                        <button class="btn-add add-to-cart-btn" data-id="${item.id}" data-name="${item.name}" data-price="${item.price}">Add to Cart</button>
+                        <button class="btn-add add-to-cart-btn" 
+    data-id="${item.id}" 
+    data-name="${item.name}" 
+    data-price="${item.price}"
+    data-img="${item.img}">Add to Cart</button>
                     </div>
                 </div>
             </div>
@@ -63,37 +67,43 @@ function renderMenuCards(filterCategory = "all") {
     container.innerHTML = html;
     
     // Attach event listeners to Add to Cart buttons
-    document.querySelectorAll('.add-to-cart-btn').forEach(btn => {
-        btn.addEventListener('click', async (e) => {
-            const id = btn.getAttribute('data-id');
-            const name = btn.getAttribute('data-name');
-            const price = btn.getAttribute('data-price');
-            
-            if (!isAuthenticated()) {
-                showToast('Please sign in to add items to cart', 'error');
-                new bootstrap.Modal(document.getElementById('authModal')).show();
-                return;
-            }
-            
+document.querySelectorAll('.add-to-cart-btn').forEach(btn => {
+    btn.addEventListener('click', async (e) => {
+        const id = btn.getAttribute('data-id');
+        const name = btn.getAttribute('data-name');
+        const price = btn.getAttribute('data-price');
+        const img = btn.getAttribute('data-img') || 'https://via.placeholder.com/100';
+        
+        // NO LOGIN CHECK HERE - Direct add to localStorage
+        let cart = JSON.parse(localStorage.getItem('local_cart') || '[]');
+        const existing = cart.find(i => i.id === id);
+        
+        if (existing) {
+            existing.quantity++;
+        } else {
+            cart.push({ 
+                id, 
+                name, 
+                price: parseFloat(price), 
+                img,
+                quantity: 1 
+            });
+        }
+        
+        localStorage.setItem('local_cart', JSON.stringify(cart));
+        updateLocalCartCount();
+        showToast(`${name} added to cart!`);
+        
+        // Optional: Sync with backend if logged in (silent background sync)
+        if (isAuthenticated()) {
             try {
                 await api.addToCart(id);
-                await updateCartCount();
-                showToast(`${name} added to cart!`);
             } catch (error) {
-                // Fallback to local cart
-                let cart = JSON.parse(localStorage.getItem('local_cart') || '[]');
-                const existing = cart.find(i => i.id === id);
-                if (existing) {
-                    existing.quantity++;
-                } else {
-                    cart.push({ id, name, price: parseFloat(price), quantity: 1 });
-                }
-                localStorage.setItem('local_cart', JSON.stringify(cart));
-                updateLocalCartCount();
-                showToast(`${name} added to cart!`);
+                console.log('Background sync failed, item saved locally');
             }
-        });
+        }
     });
+});
 }
 
 // Update local cart count
