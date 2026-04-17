@@ -336,7 +336,6 @@ document.querySelectorAll('.add-to-cart-btn').forEach(btn => {
         }
     });
 });
-}
 
 // Update local cart count
 function updateLocalCartCount() {
