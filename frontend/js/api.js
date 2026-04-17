@@ -144,7 +144,28 @@ class ApiService {
         return this.request('/reservation/user');
     }
 }
+// Profile Endpoints
+async getProfile() {
+    return this.request('/user/profile');
+}
 
+async updateProfile(profileData) {
+    return this.request('/user/profile', {
+        method: 'PUT',
+        body: JSON.stringify(profileData)
+    });
+}
+
+async getUserOrders() {
+    return this.request('/orders/user');
+}
+
+async addReview(orderId, reviewData) {
+    return this.request(`/orders/${orderId}/review`, {
+        method: 'POST',
+        body: JSON.stringify(reviewData)
+    });
+}
 // Create and export API instance
 const api = new ApiService();
 
