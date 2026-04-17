@@ -131,19 +131,6 @@ class ApiService {
             body: JSON.stringify(paymentData)
         });
     }
-
-    // Reservation Endpoints
-    async createReservation(reservationData) {
-        return this.request('/reservation', {
-            method: 'POST',
-            body: JSON.stringify(reservationData)
-        });
-    }
-
-    async getUserReservations() {
-        return this.request('/reservation/user');
-    }
-}
 // Profile Endpoints
 async getProfile() {
     return this.request('/user/profile');
@@ -166,6 +153,19 @@ async addReview(orderId, reviewData) {
         body: JSON.stringify(reviewData)
     });
 }
+    // Reservation Endpoints
+    async createReservation(reservationData) {
+        return this.request('/reservation', {
+            method: 'POST',
+            body: JSON.stringify(reservationData)
+        });
+    }
+
+    async getUserReservations() {
+        return this.request('/reservation/user');
+    }
+}
+
 // Create and export API instance
 const api = new ApiService();
 
