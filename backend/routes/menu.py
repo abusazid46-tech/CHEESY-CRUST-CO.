@@ -1,93 +1,150 @@
-# backend/routes/menu.py
-from fastapi import APIRouter, HTTPException, Depends, status
-from typing import List
-from bson import ObjectId
+"""
+Menu routes - public and admin endpoints
+"""
 
-from database import get_database
-from models.menu import MenuItem, MenuItemCreate, MenuItemUpdate
-from dependencies import get_current_user, require_admin
+from fastapi import APIRouter, HTTPException, status, Depends, Query
+from typing import Optional, Dict, Any
+
+from middleware import auth_required, get_current_admin_user
+from schemas.menu import (
+    MenuItemCreate, MenuItemUpdate,
+    MenuItemResponse, MenuListResponse
+)
+from services import menu_service
 
 router = APIRouter()
 
-@router.get("/", response_model=List[dict])
-async def get_menu_items(category: str = None):
-    """Get all menu items, optionally filtered by category"""
-    db = get_database()
-    
-    query = {"is_available": True}
-    if category and category != "all":
-        query["category"] = category
-    
-    cursor = db.menu_items.find(query)
-    items = await cursor.to_list(length=None)
-    
-    # Convert ObjectId to string
-    for item in items:
-        item["_id"] = str(item["_id"])
-    
-    return items
 
-@router.post("/", response_model=dict, dependencies=[Depends(require_admin)])
-async def create_menu_item(item: MenuItemCreate, current_user=Depends(require_admin)):
-    """Create a new menu item (admin only)"""
-    db = get_database()
-    
-    # Format price string
-    price_str = f"₹{int(item.price)}" if item.price.is_integer() else f"₹{item.price}"
-    
-    menu_item = MenuItem(
-        name=item.name,
-        category=item.category,
-        price=item.price,
-        original_price=price_str,
-        description=item.description,
-        image_url=item.image_url
+@router.get("", response_model=MenuListResponse)
+async def get_menu(
+    category: Optional[str] = Query(None, description="Filter by category"),
+    available_only: bool = Query(False, description="Show only available items"),
+    page: int = Query(1, ge=1),
+    per_page: int = Query(50, ge=1, le=100)
+):
+    """Get all menu items with optional filtering"""
+    result = await menu_service.get_all_items(
+        category=category,
+        available_only=available_only,
+        page=page,
+        per_page=per_page
     )
     
-    result = await db.menu_items.insert_one(menu_item.dict())
+    return MenuListResponse(
+        items=[MenuItemResponse(**item) for item in result["items"]],
+        total=result["total"],
+        categories=result["categories"]
+    )
+
+
+@router.get("/category/{category}")
+async def get_menu_by_category(category: str):
+    """Get menu items by category"""
+    result = await menu_service.get_all_items(category=category, per_page=100)
     
     return {
-        "id": str(result.inserted_id),
-        "message": "Menu item created successfully"
+        "success": True,
+        "category": category,
+        "items": result["items"],
+        "total": result["total"]
     }
 
-@router.put("/{item_id}", response_model=dict, dependencies=[Depends(require_admin)])
-async def update_menu_item(item_id: str, item_update: MenuItemUpdate, current_user=Depends(require_admin)):
-    """Update a menu item (admin only)"""
-    db = get_database()
-    
-    if not ObjectId.is_valid(item_id):
-        raise HTTPException(status_code=400, detail="Invalid item ID")
-    
-    update_data = {k: v for k, v in item_update.dict().items() if v is not None}
-    
-    if "price" in update_data:
-        price_str = f"₹{int(update_data['price'])}" if update_data['price'].is_integer() else f"₹{update_data['price']}"
-        update_data["original_price"] = price_str
-    
-    update_data["updated_at"] = datetime.utcnow()
-    
-    result = await db.menu_items.update_one(
-        {"_id": ObjectId(item_id)},
-        {"$set": update_data}
-    )
-    
-    if result.matched_count == 0:
-        raise HTTPException(status_code=404, detail="Menu item not found")
-    
-    return {"message": "Menu item updated successfully"}
 
-@router.delete("/{item_id}", dependencies=[Depends(require_admin)])
-async def delete_menu_item(item_id: str, current_user=Depends(require_admin)):
+@router.get("/{item_id}", response_model=MenuItemResponse)
+async def get_menu_item(item_id: str):
+    """Get a single menu item by ID"""
+    item = await menu_service.get_item_by_id(item_id)
+    
+    if not item:
+        raise HTTPException(
+            status_code=status.HTTP_404_NOT_FOUND,
+            detail="Menu item not found"
+        )
+    
+    return MenuItemResponse(**item)
+
+
+@router.get("/slug/{slug}", response_model=MenuItemResponse)
+async def get_menu_item_by_slug(slug: str):
+    """Get a single menu item by slug"""
+    item = await menu_service.get_item_by_slug(slug)
+    
+    if not item:
+        raise HTTPException(
+            status_code=status.HTTP_404_NOT_FOUND,
+            detail="Menu item not found"
+        )
+    
+    return MenuItemResponse(**item)
+
+
+@router.get("/search/{query}")
+async def search_menu(query: str):
+    """Search menu items by name or description"""
+    items = await menu_service.search_items(query)
+    
+    return {
+        "success": True,
+        "query": query,
+        "items": items,
+        "total": len(items)
+    }
+
+
+# ========== ADMIN ROUTES ==========
+
+@router.post("", response_model=MenuItemResponse, status_code=status.HTTP_201_CREATED)
+async def create_menu_item(
+    request: MenuItemCreate,
+    admin: Dict[str, Any] = Depends(get_current_admin_user)
+):
+    """Create a new menu item (admin only)"""
+    item_data = request.model_dump()
+    item = await menu_service.create_item(item_data)
+    
+    if not item:
+        raise HTTPException(
+            status_code=status.HTTP_400_BAD_REQUEST,
+            detail="Failed to create menu item"
+        )
+    
+    return MenuItemResponse(**item)
+
+
+@router.put("/{item_id}", response_model=MenuItemResponse)
+async def update_menu_item(
+    item_id: str,
+    request: MenuItemUpdate,
+    admin: Dict[str, Any] = Depends(get_current_admin_user)
+):
+    """Update a menu item (admin only)"""
+    update_data = request.model_dump(exclude_unset=True)
+    item = await menu_service.update_item(item_id, update_data)
+    
+    if not item:
+        raise HTTPException(
+            status_code=status.HTTP_404_NOT_FOUND,
+            detail="Menu item not found or update failed"
+        )
+    
+    return MenuItemResponse(**item)
+
+
+@router.delete("/{item_id}")
+async def delete_menu_item(
+    item_id: str,
+    admin: Dict[str, Any] = Depends(get_current_admin_user)
+):
     """Delete a menu item (admin only)"""
-    db = get_database()
+    success = await menu_service.delete_item(item_id)
     
-    if not ObjectId.is_valid(item_id):
-        raise HTTPException(status_code=400, detail="Invalid item ID")
+    if not success:
+        raise HTTPException(
+            status_code=status.HTTP_404_NOT_FOUND,
+            detail="Menu item not found"
+        )
     
-    result = await db.menu_items.delete_one({"_id": ObjectId(item_id)})
-    
-    if result.deleted_count == 0:
-        raise HTTPException(status_code=404, detail="Menu item not found")
-    
-    return {"message": "Menu item deleted successfully"}
+    return {
+        "success": True,
+        "message": "Menu item deleted successfully"
+    }
