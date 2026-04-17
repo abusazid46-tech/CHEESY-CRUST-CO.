@@ -39,7 +39,14 @@ function initSampleReviews() {
 // Call in DOMContentLoaded
 document.addEventListener('DOMContentLoaded', () => {
     initSampleReviews();
-    // ... rest of initialization
+    // Update UI based on auth status
+    updateAuthUI();
+    
+    // Logout button
+    document.getElementById('logoutBtn')?.addEventListener('click', (e) => {
+        e.preventDefault();
+        logout();
+    });
 });
 // Reservation state
 let reservationState = {
