@@ -1,27 +1,68 @@
-# backend/models/reservation.py
-from datetime import datetime
+"""
+Table reservation models
+"""
+
+from datetime import datetime, date, time
 from typing import List, Optional
 from pydantic import BaseModel, Field
+from bson import ObjectId
+from enum import Enum
+
+
+class PyObjectId(ObjectId):
+    @classmethod
+    def __get_validators__(cls):
+        yield cls.validate
+
+    @classmethod
+    def validate(cls, v):
+        if not ObjectId.is_valid(v):
+            raise ValueError("Invalid objectid")
+        return ObjectId(v)
+
+    @classmethod
+    def __get_pydantic_json_schema__(cls, _schema_generator):
+        return {"type": "string"}
+
+
+class ReservationStatus(str, Enum):
+    PENDING = "pending"
+    CONFIRMED = "confirmed"
+    CANCELLED = "cancelled"
+    COMPLETED = "completed"
+    NO_SHOW = "no_show"
+
 
 class PreOrderItem(BaseModel):
-    menu_item_id: str
+    """Pre-order item for reservation"""
+    item_id: str
     name: str
-    quantity: int
+    price: float
+    quantity: int = 1
+
 
 class Reservation(BaseModel):
+    """Table reservation model"""
+    id: PyObjectId = Field(default_factory=PyObjectId, alias="_id")
+    user_id: Optional[PyObjectId] = None
     name: str
     phone: str
-    date: str
-    time: str
+    date: date
+    time: time
     guests: int
-    pre_order_items: List[PreOrderItem] = []
+    special_requests: Optional[str] = None
+    preorder_items: List[PreOrderItem] = []
+    preorder_total: float = 0.0
+    status: ReservationStatus = ReservationStatus.PENDING
+    payment_status: PaymentStatus = PaymentStatus.PENDING
+    payment_id: Optional[str] = None
     created_at: datetime = Field(default_factory=datetime.utcnow)
-    status: str = "confirmed"  # confirmed, cancelled, completed
-
-class ReservationCreate(BaseModel):
-    name: str
-    phone: str
-    date: str
-    time: str
-    guests: int
-    pre_order_items: List[dict] = []
+    updated_at: datetime = Field(default_factory=datetime.utcnow)
+    
+    class Config:
+        populate_by_name = True
+        arbitrary_types_allowed = True
+        json_encoders = {ObjectId: str}
+    
+    def calculate_preorder_total(self) -> float:
+        return sum(item.price * item.quantity for item in self.preorder_items)
