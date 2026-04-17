@@ -702,6 +702,32 @@
       .reservation-premium { padding: 1.2rem; }
       .res-tab { padding: 0.5rem 1rem; font-size: 0.85rem; }
     }
+    /* Rating Display Styles */
+.rating-display {
+    display: flex;
+    align-items: center;
+    gap: 8px;
+    cursor: pointer;
+    padding: 5px 0;
+    transition: all 0.2s ease;
+}
+.rating-display:hover {
+    opacity: 0.8;
+}
+.rating-display .stars {
+    color: var(--gold);
+    font-size: 0.9rem;
+}
+.rating-count {
+    color: #888;
+    font-size: 0.8rem;
+}
+.review-star {
+    transition: transform 0.1s ease;
+}
+.review-star:hover {
+    transform: scale(1.1);
+}
   </style>
 </head>
 <body>
