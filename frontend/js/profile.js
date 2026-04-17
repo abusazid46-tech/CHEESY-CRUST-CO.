@@ -173,7 +173,14 @@ function loadMyReviews() {
     
     container.innerHTML = html;
 }
-
+// Logout functionality
+document.getElementById('logoutBtn')?.addEventListener('click', (e) => {
+    e.preventDefault();
+    localStorage.removeItem('auth_token');
+    localStorage.removeItem('user_phone');
+    localStorage.removeItem('user_name');
+    window.location.href = 'index.html';
+});
 // Tab switching
 document.querySelectorAll('.profile-tab').forEach(tab => {
     tab.addEventListener('click', () => {
