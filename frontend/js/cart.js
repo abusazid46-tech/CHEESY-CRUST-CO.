@@ -3,18 +3,29 @@ let cartSubtotal = 0;
 
 // Load cart from localStorage or API
 async function loadCart() {
-    try {
-        if (isAuthenticated()) {
+    // Always load from localStorage first
+    cartItems = JSON.parse(localStorage.getItem('local_cart') || '[]');
+    
+    // If logged in, try to merge with backend cart
+    if (isAuthenticated()) {
+        try {
             const response = await api.getCart();
-            cartItems = response.items || [];
-        } else {
-            cartItems = JSON.parse(localStorage.getItem('local_cart') || '[]');
+            if (response.items && response.items.length > 0) {
+                // Merge backend cart with local cart
+                response.items.forEach(backendItem => {
+                    const existing = cartItems.find(i => i.id === backendItem.id);
+                    if (!existing) {
+                        cartItems.push(backendItem);
+                    }
+                });
+                localStorage.setItem('local_cart', JSON.stringify(cartItems));
+            }
+        } catch (error) {
+            console.log('Using local cart');
         }
-        renderCart();
-    } catch (error) {
-        cartItems = JSON.parse(localStorage.getItem('local_cart') || '[]');
-        renderCart();
     }
+    
+    renderCart();
 }
 
 // Render cart items
