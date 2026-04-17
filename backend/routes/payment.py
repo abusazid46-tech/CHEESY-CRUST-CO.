@@ -1,89 +1,117 @@
-# backend/routes/payment.py
-from fastapi import APIRouter, HTTPException, Depends
-import razorpay
-from bson import ObjectId
-from datetime import datetime
+"""
+Payment routes - Razorpay integration
+"""
 
-from config.settings import settings
-from database import get_database
-from models.order import PaymentStatus
-from dependencies import get_current_user
+from fastapi import APIRouter, HTTPException, status, Depends, Request
+from fastapi.responses import JSONResponse
+from typing import Dict, Any
+
+from middleware import auth_required, get_current_user
+from schemas.payment import (
+    CreateOrderRequest, CreateOrderResponse,
+    VerifyPaymentRequest
+)
+from services import payment_service
 
 router = APIRouter()
 
-# Initialize Razorpay client
-razorpay_client = razorpay.Client(
-    auth=(settings.RAZORPAY_KEY_ID, settings.RAZORPAY_KEY_SECRET)
-)
 
 @router.post("/create-order")
-async def create_payment_order(order_id: str, current_user=Depends(get_current_user)):
-    """Create Razorpay payment order"""
-    db = get_database()
+async def create_payment_order(
+    request: CreateOrderRequest,
+    payload: Dict[str, Any] = Depends(auth_required)
+):
+    """Create Razorpay order for payment"""
+    user = await get_current_user(payload)
     
-    if not ObjectId.is_valid(order_id):
-        raise HTTPException(status_code=400, detail="Invalid order ID")
+    if not user:
+        raise HTTPException(
+            status_code=status.HTTP_404_NOT_FOUND,
+            detail="User not found"
+        )
     
-    # Get order
-    order = await db.orders.find_one({"_id": ObjectId(order_id)})
-    
-    if not order:
-        raise HTTPException(status_code=404, detail="Order not found")
-    
-    # Check if user owns the order
-    user_id = str(current_user["_id"])
-    if str(order["user_id"]) != user_id:
-        raise HTTPException(status_code=403, detail="Access denied")
-    
-    # Create Razorpay order
-    razorpay_order = razorpay_client.order.create({
-        'amount': int(order["total"] * 100),  # Amount in paise
-        'currency': 'INR',
-        'receipt': order_id,
-        'payment_capture': 1
+    # Add user info to notes
+    notes = request.notes or {}
+    notes.update({
+        "user_id": user["_id"],
+        "user_phone": user["phone"]
     })
     
-    # Store Razorpay order ID
-    await db.orders.update_one(
-        {"_id": ObjectId(order_id)},
-        {"$set": {"razorpay_order_id": razorpay_order['id']}}
+    success, result = await payment_service.create_order(
+        amount=request.amount,
+        order_id=request.order_id,
+        reservation_id=request.reservation_id,
+        notes=notes
     )
     
-    return {
-        "razorpay_order_id": razorpay_order['id'],
-        "amount": order["total"],
-        "currency": "INR",
-        "key": settings.RAZORPAY_KEY_ID
-    }
+    if not success:
+        raise HTTPException(
+            status_code=status.HTTP_400_BAD_REQUEST,
+            detail=result.get("error", "Failed to create payment order")
+        )
+    
+    return CreateOrderResponse(**result)
+
 
 @router.post("/verify")
-async def verify_payment(payment_data: dict, current_user=Depends(get_current_user)):
+async def verify_payment(
+    request: VerifyPaymentRequest,
+    payload: Dict[str, Any] = Depends(auth_required)
+):
     """Verify Razorpay payment signature"""
-    db = get_database()
+    success, message = await payment_service.process_payment_success(
+        razorpay_payment_id=request.razorpay_payment_id,
+        razorpay_order_id=request.razorpay_order_id,
+        razorpay_signature=request.razorpay_signature,
+        order_id=request.order_id,
+        reservation_id=request.reservation_id
+    )
     
-    try:
-        # Verify payment signature
-        razorpay_client.utility.verify_payment_signature(payment_data)
-        
-        # Update payment status
-        order_id = payment_data.get('order_id')
-        razorpay_payment_id = payment_data.get('razorpay_payment_id')
-        
-        if not order_id or not ObjectId.is_valid(order_id):
-            raise HTTPException(status_code=400, detail="Invalid order ID")
-        
-        await db.orders.update_one(
-            {"_id": ObjectId(order_id)},
-            {
-                "$set": {
-                    "payment_status": PaymentStatus.PAID,
-                    "razorpay_payment_id": razorpay_payment_id,
-                    "updated_at": datetime.utcnow()
-                }
-            }
+    if not success:
+        raise HTTPException(
+            status_code=status.HTTP_400_BAD_REQUEST,
+            detail=message
         )
-        
-        return {"message": "Payment verified successfully", "status": "success"}
     
-    except Exception as e:
-        raise HTTPException(status_code=400, detail=f"Payment verification failed: {str(e)}")
+    return {
+        "success": True,
+        "message": message
+    }
+
+
+@router.post("/webhook")
+async def razorpay_webhook(request: Request):
+    """Handle Razorpay webhooks"""
+    # Get webhook secret from headers
+    webhook_secret = request.headers.get("X-Razorpay-Signature")
+    
+    # Get request body
+    body = await request.body()
+    
+    # Verify webhook signature (implement verification)
+    # Process webhook event
+    
+    return JSONResponse(
+        content={"status": "received"},
+        status_code=status.HTTP_200_OK
+    )
+
+
+@router.get("/order/{razorpay_order_id}")
+async def get_payment_details(
+    razorpay_order_id: str,
+    payload: Dict[str, Any] = Depends(auth_required)
+):
+    """Get payment details by Razorpay order ID"""
+    payment = await payment_service.get_payment_by_order(razorpay_order_id)
+    
+    if not payment:
+        raise HTTPException(
+            status_code=status.HTTP_404_NOT_FOUND,
+            detail="Payment not found"
+        )
+    
+    return {
+        "success": True,
+        "payment": payment
+    }
